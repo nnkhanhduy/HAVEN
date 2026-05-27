@@ -376,6 +376,7 @@ function OnboardingPanel({
           </button>
         </section>
       </div>
+      <ApiStatusPanel compact />
     </section>
   );
 }
@@ -805,9 +806,10 @@ function AskAi({ session, showError }: { session: Session; showError: (error: un
         </div>
         <button disabled={busy || question.length < 2} onClick={() => ask()} type="button">
           <Send size={17} />
-          Ask
+          {busy ? "Thinking..." : "Ask"}
         </button>
       </section>
+      {busy ? <SkeletonRows /> : null}
       {answer ? (
         <section className="answer-panel">
           <p>{answer.answer}</p>
@@ -848,12 +850,15 @@ function Wiki({
   const [editingPreferenceId, setEditingPreferenceId] = useState<string | null>(null);
   const [editingWishlistId, setEditingWishlistId] = useState<string | null>(null);
   const [editingDateId, setEditingDateId] = useState<string | null>(null);
+  const [loadingWiki, setLoadingWiki] = useState(true);
+  const [savingWiki, setSavingWiki] = useState(false);
 
   useEffect(() => {
     loadWiki();
   }, []);
 
   async function loadWiki() {
+    setLoadingWiki(true);
     try {
       const [nextPreferences, nextWishlist, nextDates] = await Promise.all([
         apiRequest<Preference[]>(session, "/api/preferences"),
@@ -865,10 +870,13 @@ function Wiki({
       setDates(nextDates);
     } catch (error) {
       showError(error);
+    } finally {
+      setLoadingWiki(false);
     }
   }
 
   async function savePreference() {
+    setSavingWiki(true);
     const payload = {
       category,
       detail_json: {
@@ -890,10 +898,13 @@ function Wiki({
       await loadWiki();
     } catch (error) {
       showError(error);
+    } finally {
+      setSavingWiki(false);
     }
   }
 
   async function saveWishlist() {
+    setSavingWiki(true);
     const payload = { title: wishTitle, description: wishDescription || null, category: "gift", status: wishStatus };
     try {
       await apiRequest(session, editingWishlistId ? `/api/wishlist/${editingWishlistId}` : "/api/wishlist", {
@@ -907,10 +918,13 @@ function Wiki({
       await loadWiki();
     } catch (error) {
       showError(error);
+    } finally {
+      setSavingWiki(false);
     }
   }
 
   async function saveDate() {
+    setSavingWiki(true);
     const payload = { title: dateTitle, date_value: dateValue, date_type: dateType };
     try {
       await apiRequest(session, editingDateId ? `/api/important-dates/${editingDateId}` : "/api/important-dates", {
@@ -924,6 +938,8 @@ function Wiki({
       await loadWiki();
     } catch (error) {
       showError(error);
+    } finally {
+      setSavingWiki(false);
     }
   }
 
@@ -941,6 +957,7 @@ function Wiki({
   return (
     <div className="view-stack">
       <SectionTitle title="Couple Wiki" subtitle="The details that make planning easier and more personal." icon={Gift} />
+      {loadingWiki ? <SkeletonRows /> : null}
       <div className="wiki-grid">
         <section className="surface">
           <h2>Preferences</h2>
@@ -960,8 +977,8 @@ function Wiki({
             Notes
             <textarea value={notes} onChange={(event) => setNotes(event.target.value)} />
           </label>
-          <button disabled={!category} onClick={savePreference} type="button">
-            {editingPreferenceId ? "Update preference" : "Save preference"}
+          <button disabled={savingWiki || !category} onClick={savePreference} type="button">
+            {savingWiki ? "Saving..." : editingPreferenceId ? "Update preference" : "Save preference"}
           </button>
           <div className="wiki-card-list">
             {preferences.length ? (
@@ -1019,9 +1036,9 @@ function Wiki({
               <option value="done">Done</option>
             </select>
           </label>
-          <button disabled={!wishTitle} onClick={saveWishlist} type="button">
+          <button disabled={savingWiki || !wishTitle} onClick={saveWishlist} type="button">
             <Gift size={18} />
-            {editingWishlistId ? "Update idea" : "Add idea"}
+            {savingWiki ? "Saving..." : editingWishlistId ? "Update idea" : "Add idea"}
           </button>
           <div className="wiki-card-list">
             {wishlist.length ? (
@@ -1078,9 +1095,9 @@ function Wiki({
             Type
             <input value={dateType} onChange={(event) => setDateType(event.target.value)} />
           </label>
-          <button disabled={!dateTitle || !dateValue} onClick={saveDate} type="button">
+          <button disabled={savingWiki || !dateTitle || !dateValue} onClick={saveDate} type="button">
             <CalendarDays size={18} />
-            {editingDateId ? "Update date" : "Add date"}
+            {savingWiki ? "Saving..." : editingDateId ? "Update date" : "Add date"}
           </button>
           <div className="wiki-card-list">
             {dates.length ? (
@@ -1164,6 +1181,35 @@ function LoveMap({ session, showError }: { session: Session; showError: (error: 
   );
 }
 
+function ApiStatusPanel({ compact = false }: { compact?: boolean }) {
+  const [status, setStatus] = useState<"checking" | "ok" | "down">("checking");
+  const [version, setVersion] = useState<string>("unknown");
+
+  useEffect(() => {
+    fetch(`${apiBaseUrl}/health`)
+      .then(async (response) => {
+        if (!response.ok) {
+          setStatus("down");
+          return;
+        }
+        const payload = await response.json();
+        setVersion(typeof payload.version === "string" ? payload.version : "unknown");
+        setStatus("ok");
+      })
+      .catch(() => setStatus("down"));
+  }, []);
+
+  return (
+    <section className={compact ? "api-status compact" : "api-status"}>
+      <div>
+        <strong>Deployment status</strong>
+        <span>Frontend {shortVersion(appVersion)} · API {shortVersion(version)}</span>
+      </div>
+      <span className={`status-dot ${status}`}>{status}</span>
+    </section>
+  );
+}
+
 function SettingsView({
   session,
   profile,
@@ -1177,14 +1223,7 @@ function SettingsView({
   showError: (error: unknown) => void;
   showOk: (text: string) => void;
 }) {
-  const [health, setHealth] = useState<"checking" | "ok" | "down">("checking");
   const [inviteCode, setInviteCode] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetch(`${apiBaseUrl}/health`)
-      .then((response) => setHealth(response.ok ? "ok" : "down"))
-      .catch(() => setHealth("down"));
-  }, [apiBaseUrl]);
 
   async function copyValue(value: string, label: string) {
     try {
@@ -1209,11 +1248,11 @@ function SettingsView({
     <div className="view-stack">
       <SectionTitle title="Settings" subtitle="Account and deployment details for this Haven." icon={Settings} />
       <section className="surface settings-list">
+        <ApiStatusPanel />
         <InfoRow label="Display name" value={profile.display_name || "Not set"} />
         <InfoRow label="Role" value={profile.role || "member"} />
         <InfoRow label="Couple ID" value={profile.couple_id} />
         <InfoRow label="API" value={apiBaseUrl} />
-        <InfoRow label="API health" value={health} />
         <InfoRow label="Frontend version" value={shortVersion(appVersion)} />
         {inviteCode ? <InfoRow label="Latest invite" value={inviteCode} /> : null}
         <div className="button-row">

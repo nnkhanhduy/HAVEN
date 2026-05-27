@@ -163,6 +163,52 @@ h3 {
   padding: 6px 10px;
 }
 
+.api-status {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.74);
+  border: 1px solid #e1d7ca;
+  border-radius: 8px;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  padding: 13px;
+}
+
+.api-status.compact {
+  margin-top: 18px;
+}
+
+.api-status div {
+  display: grid;
+  gap: 3px;
+}
+
+.api-status span {
+  color: #756d64;
+  font-size: 13px;
+}
+
+.status-dot {
+  border-radius: 999px;
+  font-weight: 900;
+  padding: 6px 10px;
+}
+
+.status-dot.checking {
+  background: #f5efe7;
+  color: #756d64;
+}
+
+.status-dot.ok {
+  background: #e8f5ee;
+  color: #195c43;
+}
+
+.status-dot.down {
+  background: #fff0ec;
+  color: #8a2c1d;
+}
+
 .loading-mark,
 .brand-mark,
 .section-icon {
