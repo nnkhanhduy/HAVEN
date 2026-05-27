@@ -89,6 +89,10 @@ VITE_API_BASE_URL=https://your-render-api.onrender.com
 
 After the Vercel URL is known, add it to Render `CORS_ORIGINS` and redeploy the API.
 
+If the production site still shows an older UI after a push to `main`, check **Vercel > Project > Deployments** and confirm the newest deployment uses the latest commit. The app also shows the frontend build version in **Settings** so you can compare it with the Git commit shown in Vercel. If needed, use **Redeploy** on the latest deployment.
+
+Backend API changes require Render to run the latest commit too. With Blueprint auto deploy enabled this should happen automatically; otherwise use **Render > haven-api > Manual Deploy > Deploy latest commit**.
+
 ## GitHub Actions
 
 ### CI

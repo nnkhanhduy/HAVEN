@@ -1,5 +1,5 @@
 {
-  "buildCommand": "npm run build",
+  "buildCommand": "VITE_APP_VERSION=$VERCEL_GIT_COMMIT_SHA npm run build",
   "devCommand": "npm run dev -- --port 5173",
   "framework": "vite",
   "installCommand": "npm ci",

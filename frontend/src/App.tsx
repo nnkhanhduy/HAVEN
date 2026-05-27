@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import {
   CalendarDays,
@@ -21,7 +21,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { apiFormRequest, apiRequest, apiBaseUrl, supabase } from "./lib/api";
+import { apiFormRequest, apiRequest, apiBaseUrl, appVersion, supabase } from "./lib/api";
 import type { AskResponse, ImportantDate, Memory, Preference, Profile, WishlistItem } from "./types";
 
 type Notice = { type: "ok" | "error"; text: string } | null;
@@ -273,12 +273,13 @@ function OnboardingPanel({
   }
 
   async function joinCouple() {
+    const normalizedCode = inviteCode.trim().toUpperCase();
     setBusy(true);
     try {
       await apiRequest(session, "/api/onboarding/join", {
         method: "POST",
         body: JSON.stringify({
-          code: inviteCode,
+          code: normalizedCode,
           display_name: displayName || null,
           role: "partner_2",
         }),
@@ -358,10 +359,10 @@ function OnboardingPanel({
             <input
               className="invite-input"
               value={inviteCode}
-              onChange={(event) => setInviteCode(event.target.value.toUpperCase())}
+              onChange={(event) => setInviteCode(event.target.value.trim().toUpperCase())}
             />
           </label>
-          <button disabled={busy || inviteCode.length < 4} onClick={joinCouple} type="button">
+          <button disabled={busy || inviteCode.trim().length < 4} onClick={joinCouple} type="button">
             Join Haven
             <ChevronRight size={18} />
           </button>
@@ -443,7 +444,9 @@ function Workspace({
         {tab === "ask" ? <AskAi session={session} showError={showError} /> : null}
         {tab === "wiki" ? <Wiki session={session} showError={showError} showOk={showOk} /> : null}
         {tab === "map" ? <LoveMap session={session} showError={showError} /> : null}
-        {tab === "settings" ? <SettingsView profile={profile} apiBaseUrl={apiBaseUrl} /> : null}
+        {tab === "settings" ? (
+          <SettingsView session={session} profile={profile} apiBaseUrl={apiBaseUrl} showError={showError} showOk={showOk} />
+        ) : null}
       </section>
 
       <nav className="bottom-nav">
@@ -514,6 +517,21 @@ function Today({
         <MetricCard label="Important dates" value={loading ? "..." : String(dates.length)} />
       </div>
 
+      <div className="quick-action-grid">
+        <button className="quick-action-card" onClick={() => setTab("memories")} type="button">
+          <ImagePlus size={20} />
+          <span>Add a memory</span>
+        </button>
+        <button className="quick-action-card" onClick={() => setTab("ask")} type="button">
+          <MessageCircle size={20} />
+          <span>Ask your AI</span>
+        </button>
+        <button className="quick-action-card" onClick={() => setTab("wiki")} type="button">
+          <Gift size={20} />
+          <span>Update wiki</span>
+        </button>
+      </div>
+
       <div className="dashboard-grid">
         <section className="surface">
           <SectionHeader title="Recent moments" actionLabel="View all" onAction={() => setTab("memories")} />
@@ -558,6 +576,7 @@ function Memories({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [editing, setEditing] = useState<Memory | null>(null);
   const [busy, setBusy] = useState(false);
+  const [loadingList, setLoadingList] = useState(true);
   const fileRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -575,10 +594,13 @@ function Memories({
   }, [image]);
 
   async function loadMemories() {
+    setLoadingList(true);
     try {
       setMemories(await apiRequest<Memory[]>(session, "/api/memories"));
     } catch (error) {
       showError(error);
+    } finally {
+      setLoadingList(false);
     }
   }
 
@@ -628,6 +650,7 @@ function Memories({
   }
 
   async function deleteMemory(memoryId: string) {
+    if (!window.confirm("Delete this memory?")) return;
     setBusy(true);
     try {
       await apiRequest(session, `/api/memories/${memoryId}`, { method: "DELETE" });
@@ -673,14 +696,16 @@ function Memories({
           {previewUrl ? <img className="image-preview" alt="" src={previewUrl} /> : null}
           <button disabled={busy || (!content.trim() && !image)} onClick={createMemory} type="button">
             <Plus size={18} />
-            Save memory
+            {busy ? "Saving..." : "Save memory"}
           </button>
         </div>
       </section>
 
       <section className="memory-board">
         <SectionHeader title="All memories" actionLabel="Refresh" onAction={loadMemories} />
-        {memories.length ? (
+        {loadingList ? (
+          <SkeletonRows />
+        ) : memories.length ? (
           <div className="memory-grid">
             {memories.map((memory) => (
               <article className="memory-card" key={memory.id}>
@@ -812,6 +837,9 @@ function Wiki({
   const [dateTitle, setDateTitle] = useState("");
   const [dateValue, setDateValue] = useState("");
   const [dateType, setDateType] = useState("anniversary");
+  const [editingPreferenceId, setEditingPreferenceId] = useState<string | null>(null);
+  const [editingWishlistId, setEditingWishlistId] = useState<string | null>(null);
+  const [editingDateId, setEditingDateId] = useState<string | null>(null);
 
   useEffect(() => {
     loadWiki();
@@ -832,19 +860,21 @@ function Wiki({
     }
   }
 
-  async function addPreference() {
+  async function savePreference() {
+    const payload = {
+      category,
+      detail_json: {
+        likes: splitList(likes),
+        dislikes: splitList(dislikes),
+        notes: notes || null,
+      },
+    };
     try {
-      await apiRequest(session, "/api/preferences", {
-        method: "POST",
-        body: JSON.stringify({
-          category,
-          detail_json: {
-            likes: splitList(likes),
-            dislikes: splitList(dislikes),
-            notes: notes || null,
-          },
-        }),
+      await apiRequest(session, editingPreferenceId ? `/api/preferences/${editingPreferenceId}` : "/api/preferences", {
+        method: editingPreferenceId ? "PATCH" : "POST",
+        body: JSON.stringify(payload),
       });
+      setEditingPreferenceId(null);
       setLikes("");
       setDislikes("");
       setNotes("");
@@ -855,12 +885,14 @@ function Wiki({
     }
   }
 
-  async function addWishlist() {
+  async function saveWishlist() {
+    const payload = { title: wishTitle, description: wishDescription || null, category: "gift", status: wishStatus };
     try {
-      await apiRequest(session, "/api/wishlist", {
-        method: "POST",
-        body: JSON.stringify({ title: wishTitle, description: wishDescription || null, category: "gift", status: wishStatus }),
+      await apiRequest(session, editingWishlistId ? `/api/wishlist/${editingWishlistId}` : "/api/wishlist", {
+        method: editingWishlistId ? "PATCH" : "POST",
+        body: JSON.stringify(payload),
       });
+      setEditingWishlistId(null);
       setWishTitle("");
       setWishDescription("");
       showOk("Wishlist item saved");
@@ -870,15 +902,28 @@ function Wiki({
     }
   }
 
-  async function addDate() {
+  async function saveDate() {
+    const payload = { title: dateTitle, date_value: dateValue, date_type: dateType };
     try {
-      await apiRequest(session, "/api/important-dates", {
-        method: "POST",
-        body: JSON.stringify({ title: dateTitle, date_value: dateValue, date_type: dateType }),
+      await apiRequest(session, editingDateId ? `/api/important-dates/${editingDateId}` : "/api/important-dates", {
+        method: editingDateId ? "PATCH" : "POST",
+        body: JSON.stringify(payload),
       });
+      setEditingDateId(null);
       setDateTitle("");
       setDateValue("");
       showOk("Date saved");
+      await loadWiki();
+    } catch (error) {
+      showError(error);
+    }
+  }
+
+  async function deleteWikiItem(path: string, label: string) {
+    if (!window.confirm(`Delete this ${label}?`)) return;
+    try {
+      await apiRequest(session, path, { method: "DELETE" });
+      showOk(`${label} deleted`);
       await loadWiki();
     } catch (error) {
       showError(error);
@@ -907,10 +952,45 @@ function Wiki({
             Notes
             <textarea value={notes} onChange={(event) => setNotes(event.target.value)} />
           </label>
-          <button disabled={!category} onClick={addPreference} type="button">
-            Save preference
+          <button disabled={!category} onClick={savePreference} type="button">
+            {editingPreferenceId ? "Update preference" : "Save preference"}
           </button>
-          <MiniList items={preferences.map((item) => `${item.category}: ${formatPreference(item.detail_json)}`)} />
+          <div className="wiki-card-list">
+            {preferences.length ? (
+              preferences.map((item) => (
+                <article className="wiki-item-card" key={item.id}>
+                  <strong>{item.category}</strong>
+                  <p>{formatPreference(item.detail_json)}</p>
+                  <div className="card-actions">
+                    <button
+                      className="icon-only ghost"
+                      onClick={() => {
+                        setEditingPreferenceId(item.id);
+                        setCategory(item.category);
+                        setLikes(Array.isArray(item.detail_json.likes) ? item.detail_json.likes.join(", ") : "");
+                        setDislikes(Array.isArray(item.detail_json.dislikes) ? item.detail_json.dislikes.join(", ") : "");
+                        setNotes(typeof item.detail_json.notes === "string" ? item.detail_json.notes : "");
+                      }}
+                      title="Edit preference"
+                      type="button"
+                    >
+                      <Pencil size={16} />
+                    </button>
+                    <button
+                      className="icon-only danger"
+                      onClick={() => deleteWikiItem(`/api/preferences/${item.id}`, "preference")}
+                      title="Delete preference"
+                      type="button"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </article>
+              ))
+            ) : (
+              <span className="muted">Nothing saved yet</span>
+            )}
+          </div>
         </section>
 
         <section className="surface">
@@ -931,11 +1011,49 @@ function Wiki({
               <option value="done">Done</option>
             </select>
           </label>
-          <button disabled={!wishTitle} onClick={addWishlist} type="button">
+          <button disabled={!wishTitle} onClick={saveWishlist} type="button">
             <Gift size={18} />
-            Add idea
+            {editingWishlistId ? "Update idea" : "Add idea"}
           </button>
-          <MiniList items={wishlist.map((item) => `${item.title} · ${item.status}`)} />
+          <div className="wiki-card-list">
+            {wishlist.length ? (
+              wishlist.map((item) => (
+                <article className="wiki-item-card" key={item.id}>
+                  <strong>{item.title}</strong>
+                  <p>{item.description || "No notes yet"}</p>
+                  <div className="meta">
+                    <span>{item.status}</span>
+                    {item.category ? <span>{item.category}</span> : null}
+                  </div>
+                  <div className="card-actions">
+                    <button
+                      className="icon-only ghost"
+                      onClick={() => {
+                        setEditingWishlistId(item.id);
+                        setWishTitle(item.title);
+                        setWishDescription(item.description || "");
+                        setWishStatus(item.status);
+                      }}
+                      title="Edit wishlist item"
+                      type="button"
+                    >
+                      <Pencil size={16} />
+                    </button>
+                    <button
+                      className="icon-only danger"
+                      onClick={() => deleteWikiItem(`/api/wishlist/${item.id}`, "wishlist item")}
+                      title="Delete wishlist item"
+                      type="button"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </article>
+              ))
+            ) : (
+              <span className="muted">Nothing saved yet</span>
+            )}
+          </div>
         </section>
 
         <section className="surface">
@@ -952,11 +1070,48 @@ function Wiki({
             Type
             <input value={dateType} onChange={(event) => setDateType(event.target.value)} />
           </label>
-          <button disabled={!dateTitle || !dateValue} onClick={addDate} type="button">
+          <button disabled={!dateTitle || !dateValue} onClick={saveDate} type="button">
             <CalendarDays size={18} />
-            Add date
+            {editingDateId ? "Update date" : "Add date"}
           </button>
-          <MiniList items={dates.map((item) => `${item.title}: ${formatDate(item.date_value)}`)} />
+          <div className="wiki-card-list">
+            {dates.length ? (
+              dates.map((item) => (
+                <article className="wiki-item-card" key={item.id}>
+                  <strong>{item.title}</strong>
+                  <p>{formatDate(item.date_value)}</p>
+                  <div className="meta">
+                    <span>{item.date_type}</span>
+                  </div>
+                  <div className="card-actions">
+                    <button
+                      className="icon-only ghost"
+                      onClick={() => {
+                        setEditingDateId(item.id);
+                        setDateTitle(item.title);
+                        setDateValue(item.date_value);
+                        setDateType(item.date_type);
+                      }}
+                      title="Edit date"
+                      type="button"
+                    >
+                      <Pencil size={16} />
+                    </button>
+                    <button
+                      className="icon-only danger"
+                      onClick={() => deleteWikiItem(`/api/important-dates/${item.id}`, "date")}
+                      title="Delete date"
+                      type="button"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </article>
+              ))
+            ) : (
+              <span className="muted">Nothing saved yet</span>
+            )}
+          </div>
         </section>
       </div>
     </div>
@@ -1001,7 +1156,47 @@ function LoveMap({ session, showError }: { session: Session; showError: (error: 
   );
 }
 
-function SettingsView({ profile, apiBaseUrl }: { profile: Profile; apiBaseUrl: string }) {
+function SettingsView({
+  session,
+  profile,
+  apiBaseUrl,
+  showError,
+  showOk,
+}: {
+  session: Session;
+  profile: Profile;
+  apiBaseUrl: string;
+  showError: (error: unknown) => void;
+  showOk: (text: string) => void;
+}) {
+  const [health, setHealth] = useState<"checking" | "ok" | "down">("checking");
+  const [inviteCode, setInviteCode] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch(`${apiBaseUrl}/health`)
+      .then((response) => setHealth(response.ok ? "ok" : "down"))
+      .catch(() => setHealth("down"));
+  }, [apiBaseUrl]);
+
+  async function copyValue(value: string, label: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      showOk(`${label} copied`);
+    } catch {
+      showOk(value);
+    }
+  }
+
+  async function createInvite() {
+    try {
+      const invite = await apiRequest<{ code: string }>(session, "/api/onboarding/invite", { method: "POST" });
+      setInviteCode(invite.code);
+      await copyValue(invite.code, "Invite code");
+    } catch (error) {
+      showError(error);
+    }
+  }
+
   return (
     <div className="view-stack">
       <SectionTitle title="Settings" subtitle="Account and deployment details for this Haven." icon={Settings} />
@@ -1010,6 +1205,18 @@ function SettingsView({ profile, apiBaseUrl }: { profile: Profile; apiBaseUrl: s
         <InfoRow label="Role" value={profile.role || "member"} />
         <InfoRow label="Couple ID" value={profile.couple_id} />
         <InfoRow label="API" value={apiBaseUrl} />
+        <InfoRow label="API health" value={health} />
+        <InfoRow label="Frontend version" value={appVersion} />
+        {inviteCode ? <InfoRow label="Latest invite" value={inviteCode} /> : null}
+        <div className="button-row">
+          <button className="secondary" onClick={() => copyValue(profile.couple_id, "Couple ID")} type="button">
+            Copy Couple ID
+          </button>
+          <button onClick={createInvite} type="button">
+            <Share2 size={17} />
+            Copy new invite
+          </button>
+        </div>
         <button className="secondary" onClick={() => supabase.auth.signOut()} type="button">
           <LogOut size={17} />
           Sign out

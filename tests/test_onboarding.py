@@ -115,6 +115,87 @@ def test_get_active_invite_rejects_expired_invite(monkeypatch):
         raise AssertionError("Expected HTTPException")
 
 
+def test_get_active_invite_rejects_missing_invite(monkeypatch):
+    service = OnboardingService()
+
+    class FakeTable:
+        def select(self, _fields):
+            return self
+
+        def eq(self, _field, _value):
+            return self
+
+        def limit(self, _count):
+            return self
+
+        def execute(self):
+            return type("Result", (), {"data": []})()
+
+    class FakeSupabase:
+        def table(self, name):
+            assert name == "couple_invites"
+            return FakeTable()
+
+    from app.services import onboarding
+
+    monkeypatch.setattr(onboarding, "supabase", FakeSupabase())
+
+    try:
+        service._get_active_invite("MISSING")
+    except HTTPException as exc:
+        assert exc.status_code == 404
+        assert exc.detail == "Invite not found"
+    else:
+        raise AssertionError("Expected HTTPException")
+
+
+def test_get_active_invite_rejects_used_invite(monkeypatch):
+    service = OnboardingService()
+
+    class FakeTable:
+        def select(self, _fields):
+            return self
+
+        def eq(self, _field, _value):
+            return self
+
+        def limit(self, _count):
+            return self
+
+        def execute(self):
+            return type(
+                "Result",
+                (),
+                {
+                    "data": [
+                        {
+                            "id": "invite-1",
+                            "couple_id": "couple-1",
+                            "expires_at": None,
+                            "accepted_by_user_id": "user-2",
+                        }
+                    ]
+                },
+            )()
+
+    class FakeSupabase:
+        def table(self, name):
+            assert name == "couple_invites"
+            return FakeTable()
+
+    from app.services import onboarding
+
+    monkeypatch.setattr(onboarding, "supabase", FakeSupabase())
+
+    try:
+        service._get_active_invite("USED")
+    except HTTPException as exc:
+        assert exc.status_code == 409
+        assert exc.detail == "Invite already used"
+    else:
+        raise AssertionError("Expected HTTPException")
+
+
 def test_join_couple_rejects_user_with_existing_profile(monkeypatch):
     service = OnboardingService()
     user = AuthenticatedUser(user_id="user-1")
@@ -130,3 +211,34 @@ def test_join_couple_rejects_user_with_existing_profile(monkeypatch):
         assert exc.status_code == 409
     else:
         raise AssertionError("Expected HTTPException")
+
+
+def test_join_couple_creates_profile_and_marks_invite(monkeypatch):
+    service = OnboardingService()
+    user = AuthenticatedUser(user_id="user-2")
+    calls = []
+
+    monkeypatch.setattr(service, "get_profile", lambda _: None)
+    monkeypatch.setattr(
+        service,
+        "_get_active_invite",
+        lambda code: {"id": "invite-1", "couple_id": "couple-1"} if code == "ABC123" else None,
+    )
+    monkeypatch.setattr(
+        service,
+        "_create_profile",
+        lambda **kwargs: {
+            "user_id": kwargs["user_id"],
+            "couple_id": kwargs["couple_id"],
+            "display_name": kwargs["display_name"],
+            "role": kwargs["role"],
+        },
+    )
+    monkeypatch.setattr(service, "_mark_invite_accepted", lambda invite_id, user_id: calls.append(("accepted", invite_id, user_id)))
+    monkeypatch.setattr(service, "_fill_second_partner", lambda couple_id, user_id: calls.append(("partner", couple_id, user_id)))
+
+    result = service.join_couple(user, JoinCoupleRequest(code="ABC123", display_name="Sam"))
+
+    assert result.user_id == "user-2"
+    assert result.couple_id == "couple-1"
+    assert calls == [("accepted", "invite-1", "user-2"), ("partner", "couple-1", "user-2")]
