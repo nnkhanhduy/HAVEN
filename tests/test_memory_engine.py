@@ -1,4 +1,5 @@
 from app.services.memory_engine import MemoryEngine
+from fastapi import HTTPException
 
 
 class FakeStorageBucket:
@@ -53,3 +54,35 @@ def test_with_signed_image_url_handles_text_only_memory():
     result = MemoryEngine()._with_signed_image_url(memory)
 
     assert result["image_signed_url"] is None
+
+
+class FakeUploadFile:
+    content_type = "image/gif"
+
+
+def test_validate_image_rejects_unsupported_content_type(monkeypatch):
+    from app.services import memory_engine
+
+    monkeypatch.setattr(memory_engine.settings, "allowed_image_content_types", ["image/jpeg"])
+
+    try:
+        MemoryEngine()._validate_image(FakeUploadFile(), b"image-bytes")
+    except HTTPException as exc:
+        assert exc.status_code == 400
+        assert exc.detail == "Unsupported image type"
+    else:
+        raise AssertionError("Expected HTTPException")
+
+
+def test_validate_image_rejects_large_upload(monkeypatch):
+    from app.services import memory_engine
+
+    monkeypatch.setattr(memory_engine.settings, "max_image_upload_bytes", 3)
+
+    try:
+        MemoryEngine()._validate_image(FakeUploadFile(), b"image-bytes")
+    except HTTPException as exc:
+        assert exc.status_code == 413
+        assert exc.detail == "Image upload is too large"
+    else:
+        raise AssertionError("Expected HTTPException")

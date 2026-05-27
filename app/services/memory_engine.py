@@ -31,6 +31,7 @@ class MemoryEngine:
 
         if image:
             raw_image_bytes = await image.read()
+            self._validate_image(image, raw_image_bytes)
             image_url = self._upload_image(user.couple_id, image, raw_image_bytes)
             image_caption = await self._describe_image(image, raw_image_bytes)
 
@@ -256,6 +257,20 @@ class MemoryEngine:
             {"content-type": image.content_type or "application/octet-stream"},
         )
         return object_path
+
+    def _validate_image(self, image: UploadFile, image_bytes: bytes) -> None:
+        if len(image_bytes) > settings.max_image_upload_bytes:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail="Image upload is too large",
+            )
+
+        content_type = image.content_type or ""
+        if content_type not in settings.allowed_image_content_types:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Unsupported image type",
+            )
 
     def _get_couple_memory(self, couple_id: str, memory_id: str) -> dict[str, Any]:
         result = (

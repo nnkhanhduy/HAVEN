@@ -1,9 +1,12 @@
 # Haven Production Deployment
 
-This project deploys as two Docker containers:
+This project can run as a free public MVP with:
 
-- `api`: FastAPI backend.
-- `web`: Nginx serving the React app and proxying `/api` to `api`.
+- `api`: FastAPI backend on Render Free Web Service.
+- `web`: React/Vite frontend on Vercel Hobby.
+- Supabase Free for Postgres, Auth, Storage, and pgvector.
+
+Free tiers are suitable for MVP demos, not guaranteed production SLA. Render Free web services spin down after idle time and can cold start.
 
 ## Local CI Commands
 
@@ -15,6 +18,76 @@ cd frontend
 npm ci
 npm run build
 ```
+
+## Supabase Setup
+
+1. Create a Supabase project.
+2. Run `supabase/schema.sql` in the SQL editor.
+3. Create a private Storage bucket named `memories`.
+4. Copy the project URL, anon key, service role key, and JWT secret.
+
+Never expose `SUPABASE_SERVICE_ROLE_KEY` to the frontend.
+
+## Render API
+
+Create a Render Web Service from this GitHub repository:
+
+- Runtime: Docker
+- Dockerfile: `Dockerfile`
+- Plan: Free
+- Health check path: `/health`
+
+Or create it from `render.yaml`.
+
+Set these environment variables in Render:
+
+```text
+APP_NAME=haven
+API_V1_PREFIX=/api
+CORS_ORIGINS=https://your-vercel-app.vercel.app,http://localhost:5173,http://127.0.0.1:5173
+
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+SUPABASE_JWT_SECRET=your-supabase-jwt-secret
+SUPABASE_MEMORY_BUCKET=memories
+
+OPENAI_API_KEY=sk-your-key
+OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+OPENAI_CHAT_MODEL=gpt-4o-mini
+OPENAI_VISION_MODEL=gpt-4o-mini
+
+MAX_IMAGE_UPLOAD_BYTES=8388608
+ALLOWED_IMAGE_CONTENT_TYPES=image/jpeg,image/png,image/webp
+```
+
+After deploy:
+
+```bash
+curl https://your-render-api.onrender.com/health
+curl https://your-render-api.onrender.com/ready
+```
+
+`/health` only confirms the API process is alive. `/ready` confirms Supabase connectivity.
+
+## Vercel Web
+
+Create a Vercel project from this repository:
+
+- Root Directory: `frontend`
+- Framework Preset: Vite
+- Install Command: `npm ci`
+- Build Command: `npm run build`
+- Output Directory: `dist`
+
+Set these environment variables in Vercel:
+
+```text
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
+VITE_API_BASE_URL=https://your-render-api.onrender.com
+```
+
+After the Vercel URL is known, add it to Render `CORS_ORIGINS` and redeploy the API.
 
 ## GitHub Actions
 
@@ -29,9 +102,9 @@ It checks:
 - API Docker image build.
 - Web Docker image build.
 
-### Production Deploy
+### VPS Deploy
 
-`.github/workflows/deploy.yml` runs on pushes to `main` and can also be run manually.
+`.github/workflows/deploy.yml` is still available for a paid VPS or self-managed Docker host. It is not required for the free Render + Vercel deployment.
 
 It:
 
@@ -67,7 +140,7 @@ Optional GitHub environment variable:
 WEB_PORT=80
 ```
 
-## Server Setup
+## VPS Server Setup
 
 Install Docker and Docker Compose on the production server.
 

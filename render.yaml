@@ -1,0 +1,34 @@
+services:
+  - type: web
+    name: haven-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: APP_NAME
+        value: haven
+      - key: API_V1_PREFIX
+        value: /api
+      - key: CORS_ORIGINS
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_JWT_SECRET
+        sync: false
+      - key: SUPABASE_MEMORY_BUCKET
+        value: memories
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_EMBEDDING_MODEL
+        value: text-embedding-3-small
+      - key: OPENAI_CHAT_MODEL
+        value: gpt-4o-mini
+      - key: OPENAI_VISION_MODEL
+        value: gpt-4o-mini
+      - key: MAX_IMAGE_UPLOAD_BYTES
+        value: "8388608"
+      - key: ALLOWED_IMAGE_CONTENT_TYPES
+        value: image/jpeg,image/png,image/webp
