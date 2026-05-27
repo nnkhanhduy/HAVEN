@@ -1,21 +1,39 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import {
   CalendarDays,
+  Check,
+  ChevronRight,
   Gift,
   Heart,
+  ImagePlus,
   LogOut,
   MapPin,
   MessageCircle,
+  Pencil,
   Plus,
   RefreshCw,
+  Send,
+  Settings,
   Sparkles,
+  Trash2,
+  Upload,
+  X,
 } from "lucide-react";
-import { apiFormRequest, apiRequest, supabase } from "./lib/api";
+import { apiFormRequest, apiRequest, apiBaseUrl, supabase } from "./lib/api";
 import type { AskResponse, ImportantDate, Memory, Preference, Profile, WishlistItem } from "./types";
 
 type Notice = { type: "ok" | "error"; text: string } | null;
-type Tab = "memories" | "ask" | "wiki" | "map";
+type Tab = "today" | "memories" | "ask" | "wiki" | "map" | "settings";
+
+const tabs = [
+  { id: "today" as const, label: "Today", icon: Sparkles },
+  { id: "memories" as const, label: "Memories", icon: Heart },
+  { id: "ask" as const, label: "Ask", icon: MessageCircle },
+  { id: "wiki" as const, label: "Wiki", icon: Gift },
+  { id: "map" as const, label: "Map", icon: MapPin },
+  { id: "settings" as const, label: "Settings", icon: Settings },
+];
 
 export function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -61,34 +79,12 @@ export function App() {
   }
 
   if (loading) {
-    return <main className="loading">Loading Haven</main>;
+    return <LoadingScreen />;
   }
 
   return (
     <main className="app-shell">
-      <header className="topbar">
-        <div>
-          <div className="brand-row">
-            <Heart size={24} strokeWidth={2.4} />
-            <h1>Haven</h1>
-          </div>
-          <p>{profile ? `Couple ${profile.couple_id.slice(0, 8)}` : "Private couple memory workspace"}</p>
-        </div>
-        {session ? (
-          <button
-            className="icon-text ghost"
-            onClick={() => supabase.auth.signOut()}
-            title="Sign out"
-            type="button"
-          >
-            <LogOut size={18} />
-            Sign out
-          </button>
-        ) : null}
-      </header>
-
       {notice ? <NoticeBanner notice={notice} onClose={() => setNotice(null)} /> : null}
-
       {!session ? (
         <AuthPanel showError={showError} showOk={showOk} />
       ) : !profile ? (
@@ -100,10 +96,22 @@ export function App() {
   );
 }
 
+function LoadingScreen() {
+  return (
+    <main className="loading-screen">
+      <div className="loading-mark">
+        <Heart size={28} />
+      </div>
+      <p>Opening your Haven</p>
+    </main>
+  );
+}
+
 function NoticeBanner({ notice, onClose }: { notice: NonNullable<Notice>; onClose: () => void }) {
   return (
     <button className={`notice ${notice.type}`} onClick={onClose} type="button">
-      {notice.text}
+      <span>{notice.text}</span>
+      <X size={16} />
     </button>
   );
 }
@@ -128,7 +136,26 @@ function AuthPanel({
           : supabase.auth.signUp({ email, password });
       const { error } = await action;
       if (error) throw error;
-      showOk(mode === "signin" ? "Signed in" : "Account created");
+      showOk(mode === "signin" ? "Signed in" : "Account created. Check your email if confirmation is enabled.");
+    } catch (error) {
+      showError(error);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function resetPassword() {
+    if (!email) {
+      showError(new Error("Enter your email first"));
+      return;
+    }
+    setBusy(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin,
+      });
+      if (error) throw error;
+      showOk("Password recovery email sent");
     } catch (error) {
       showError(error);
     } finally {
@@ -137,12 +164,31 @@ function AuthPanel({
   }
 
   return (
-    <section className="auth-layout">
-      <div className="auth-copy">
-        <h2>Start testing the backend flow</h2>
-        <p>Use a Supabase Auth user, then create or join a couple workspace.</p>
+    <section className="auth-page page-enter">
+      <div className="auth-ambient" />
+      <div className="auth-story">
+        <div className="brand-lockup">
+          <span className="brand-mark">
+            <Heart size={24} />
+          </span>
+          <span>Haven</span>
+        </div>
+        <h1>A private place for the moments only you two understand.</h1>
+        <p>
+          Capture memories, learn each other's preferences, and ask your shared history for ideas when it matters.
+        </p>
+        <div className="auth-highlights">
+          <span>Private couple space</span>
+          <span>Memory-powered AI</span>
+          <span>Shared rituals</span>
+        </div>
       </div>
-      <form className="panel compact" onSubmit={(event) => event.preventDefault()}>
+
+      <form className="auth-card" onSubmit={(event) => event.preventDefault()}>
+        <div>
+          <p className="eyebrow">Welcome back</p>
+          <h2>Sign in to Haven</h2>
+        </div>
         <label>
           Email
           <input value={email} onChange={(event) => setEmail(event.target.value)} type="email" />
@@ -152,13 +198,17 @@ function AuthPanel({
           <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" />
         </label>
         <div className="button-row">
-          <button disabled={busy} onClick={() => submit("signin")} type="button">
+          <button disabled={busy || !email || !password} onClick={() => submit("signin")} type="button">
+            <Send size={17} />
             Sign in
           </button>
-          <button className="secondary" disabled={busy} onClick={() => submit("signup")} type="button">
+          <button className="secondary" disabled={busy || !email || !password} onClick={() => submit("signup")} type="button">
             Sign up
           </button>
         </div>
+        <button className="text-button" disabled={busy} onClick={resetPassword} type="button">
+          Forgot password?
+        </button>
       </form>
     </section>
   );
@@ -178,8 +228,10 @@ function OnboardingPanel({
   const [displayName, setDisplayName] = useState("");
   const [anniversaryDate, setAnniversaryDate] = useState("");
   const [inviteCode, setInviteCode] = useState("");
+  const [busy, setBusy] = useState(false);
 
   async function createCouple() {
+    setBusy(true);
     try {
       await apiRequest(session, "/api/onboarding/couple", {
         method: "POST",
@@ -189,14 +241,17 @@ function OnboardingPanel({
           anniversary_date: anniversaryDate || null,
         }),
       });
-      showOk("Couple created");
+      showOk("Your Haven is ready");
       await refreshProfile();
     } catch (error) {
       showError(error);
+    } finally {
+      setBusy(false);
     }
   }
 
   async function joinCouple() {
+    setBusy(true);
     try {
       await apiRequest(session, "/api/onboarding/join", {
         method: "POST",
@@ -206,43 +261,70 @@ function OnboardingPanel({
           role: "partner_2",
         }),
       });
-      showOk("Joined couple");
+      showOk("Joined your shared Haven");
       await refreshProfile();
     } catch (error) {
       showError(error);
+    } finally {
+      setBusy(false);
     }
   }
 
   return (
-    <section className="grid two">
-      <div className="panel">
-        <h2>Create couple</h2>
-        <label>
-          Display name
-          <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
-        </label>
-        <label>
-          Anniversary
-          <input type="date" value={anniversaryDate} onChange={(event) => setAnniversaryDate(event.target.value)} />
-        </label>
-        <button onClick={createCouple} type="button">
-          <Plus size={18} />
-          Create
+    <section className="onboarding-page page-enter">
+      <div className="onboarding-header">
+        <div className="brand-lockup">
+          <span className="brand-mark">
+            <Heart size={23} />
+          </span>
+          <span>Haven</span>
+        </div>
+        <button className="ghost" onClick={() => supabase.auth.signOut()} type="button">
+          <LogOut size={17} />
+          Sign out
         </button>
       </div>
-      <div className="panel">
-        <h2>Join with invite</h2>
-        <label>
-          Display name
-          <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
-        </label>
-        <label>
-          Invite code
-          <input value={inviteCode} onChange={(event) => setInviteCode(event.target.value.toUpperCase())} />
-        </label>
-        <button onClick={joinCouple} type="button">
-          Join
-        </button>
+      <div className="onboarding-copy">
+        <p className="eyebrow">One more step</p>
+        <h1>Create or join your private couple space.</h1>
+      </div>
+      <div className="choice-grid">
+        <section className="choice-card">
+          <h2>Create a Haven</h2>
+          <p>Start a shared space and invite your partner when you are ready.</p>
+          <label>
+            Display name
+            <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
+          </label>
+          <label>
+            Anniversary
+            <input type="date" value={anniversaryDate} onChange={(event) => setAnniversaryDate(event.target.value)} />
+          </label>
+          <button disabled={busy} onClick={createCouple} type="button">
+            <Plus size={18} />
+            Create Haven
+          </button>
+        </section>
+        <section className="choice-card accent">
+          <h2>Join with invite</h2>
+          <p>Use the invite code from your partner to enter the same space.</p>
+          <label>
+            Display name
+            <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
+          </label>
+          <label>
+            Invite code
+            <input
+              className="invite-input"
+              value={inviteCode}
+              onChange={(event) => setInviteCode(event.target.value.toUpperCase())}
+            />
+          </label>
+          <button disabled={busy || inviteCode.length < 4} onClick={joinCouple} type="button">
+            Join Haven
+            <ChevronRight size={18} />
+          </button>
+        </section>
       </div>
     </section>
   );
@@ -259,20 +341,13 @@ function Workspace({
   showError: (error: unknown) => void;
   showOk: (text: string) => void;
 }) {
-  const [tab, setTab] = useState<Tab>("memories");
-  const tabs = useMemo(
-    () => [
-      { id: "memories" as const, label: "Memories", icon: Heart },
-      { id: "ask" as const, label: "Ask", icon: MessageCircle },
-      { id: "wiki" as const, label: "Wiki", icon: Gift },
-      { id: "map" as const, label: "Map", icon: MapPin },
-    ],
-    [],
-  );
+  const [tab, setTab] = useState<Tab>("today");
+  const [inviteCode, setInviteCode] = useState<string | null>(null);
 
   async function createInvite() {
     try {
       const invite = await apiRequest<{ code: string }>(session, "/api/onboarding/invite", { method: "POST" });
+      setInviteCode(invite.code);
       showOk(`Invite code: ${invite.code}`);
     } catch (error) {
       showError(error);
@@ -280,26 +355,27 @@ function Workspace({
   }
 
   return (
-    <section className="workspace">
+    <section className="workspace-shell">
       <aside className="sidebar">
-        <div className="profile-box">
-          <strong>{profile.display_name || "Partner"}</strong>
-          <span>{profile.role || "member"}</span>
+        <div className="sidebar-brand">
+          <span className="brand-mark">
+            <Heart size={22} />
+          </span>
+          <div>
+            <strong>Haven</strong>
+            <span>{profile.display_name || "Partner"}</span>
+          </div>
         </div>
-        <button className="secondary full" onClick={createInvite} type="button">
+        <button className="invite-button" onClick={createInvite} type="button">
           <Plus size={17} />
-          Invite
+          Invite partner
         </button>
-        <nav>
+        {inviteCode ? <div className="invite-code">Code {inviteCode}</div> : null}
+        <nav className="side-nav">
           {tabs.map((item) => {
             const Icon = item.icon;
             return (
-              <button
-                className={tab === item.id ? "active" : ""}
-                key={item.id}
-                onClick={() => setTab(item.id)}
-                type="button"
-              >
+              <button className={tab === item.id ? "active" : ""} key={item.id} onClick={() => setTab(item.id)} type="button">
                 <Icon size={18} />
                 {item.label}
               </button>
@@ -307,13 +383,120 @@ function Workspace({
           })}
         </nav>
       </aside>
-      <div className="content">
+
+      <div className="mobile-topbar">
+        <div className="brand-lockup">
+          <span className="brand-mark">
+            <Heart size={21} />
+          </span>
+          <span>Haven</span>
+        </div>
+        <button className="icon-only ghost" onClick={createInvite} title="Invite partner" type="button">
+          <Plus size={18} />
+        </button>
+      </div>
+
+      <section className="content-panel page-enter">
+        {tab === "today" ? <Today session={session} profile={profile} setTab={setTab} showError={showError} /> : null}
         {tab === "memories" ? <Memories session={session} showError={showError} showOk={showOk} /> : null}
         {tab === "ask" ? <AskAi session={session} showError={showError} /> : null}
         {tab === "wiki" ? <Wiki session={session} showError={showError} showOk={showOk} /> : null}
         {tab === "map" ? <LoveMap session={session} showError={showError} /> : null}
-      </div>
+        {tab === "settings" ? <SettingsView profile={profile} apiBaseUrl={apiBaseUrl} /> : null}
+      </section>
+
+      <nav className="bottom-nav">
+        {tabs.slice(0, 5).map((item) => {
+          const Icon = item.icon;
+          return (
+            <button className={tab === item.id ? "active" : ""} key={item.id} onClick={() => setTab(item.id)} type="button">
+              <Icon size={18} />
+              <span>{item.label}</span>
+            </button>
+          );
+        })}
+      </nav>
     </section>
+  );
+}
+
+function Today({
+  session,
+  profile,
+  setTab,
+  showError,
+}: {
+  session: Session;
+  profile: Profile;
+  setTab: (tab: Tab) => void;
+  showError: (error: unknown) => void;
+}) {
+  const [memories, setMemories] = useState<Memory[]>([]);
+  const [dates, setDates] = useState<ImportantDate[]>([]);
+  const [wishlist, setWishlist] = useState<WishlistItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      apiRequest<Memory[]>(session, "/api/memories?limit=3"),
+      apiRequest<ImportantDate[]>(session, "/api/important-dates"),
+      apiRequest<WishlistItem[]>(session, "/api/wishlist"),
+    ])
+      .then(([nextMemories, nextDates, nextWishlist]) => {
+        setMemories(nextMemories);
+        setDates(nextDates);
+        setWishlist(nextWishlist);
+      })
+      .catch(showError)
+      .finally(() => setLoading(false));
+  }, [session.access_token]);
+
+  const nextDate = [...dates].sort((a, b) => a.date_value.localeCompare(b.date_value))[0];
+
+  return (
+    <div className="view-stack">
+      <header className="hero-panel">
+        <div>
+          <p className="eyebrow">Today in your Haven</p>
+          <h1>{profile.display_name ? `Hi, ${profile.display_name}` : "Welcome back"}</h1>
+          <p>Keep the small details close. They become the story you two can return to later.</p>
+        </div>
+        <button onClick={() => setTab("memories")} type="button">
+          <ImagePlus size={18} />
+          Add memory
+        </button>
+      </header>
+
+      <div className="metric-grid">
+        <MetricCard label="Recent memories" value={loading ? "..." : String(memories.length)} />
+        <MetricCard label="Wishlist ideas" value={loading ? "..." : String(wishlist.length)} />
+        <MetricCard label="Important dates" value={loading ? "..." : String(dates.length)} />
+      </div>
+
+      <div className="dashboard-grid">
+        <section className="surface">
+          <SectionHeader title="Recent moments" actionLabel="View all" onAction={() => setTab("memories")} />
+          {loading ? <SkeletonRows /> : memories.length ? memories.map((memory) => <MemoryMini key={memory.id} memory={memory} />) : <EmptyState title="No memories yet" text="Start with one moment from today." />}
+        </section>
+        <section className="surface warm">
+          <SectionHeader title="Next ritual" />
+          {nextDate ? (
+            <div className="date-spotlight">
+              <CalendarDays size={22} />
+              <div>
+                <strong>{nextDate.title}</strong>
+                <span>{formatDate(nextDate.date_value)}</span>
+              </div>
+            </div>
+          ) : (
+            <EmptyState title="No dates saved" text="Add anniversaries and meaningful days in Wiki." />
+          )}
+          <button className="secondary full" onClick={() => setTab("wiki")} type="button">
+            Open Wiki
+          </button>
+        </section>
+      </div>
+    </div>
   );
 }
 
@@ -330,10 +513,25 @@ function Memories({
   const [content, setContent] = useState("");
   const [location, setLocation] = useState("");
   const [occurredAt, setOccurredAt] = useState("");
+  const [image, setImage] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [editing, setEditing] = useState<Memory | null>(null);
+  const [busy, setBusy] = useState(false);
+  const fileRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     loadMemories();
   }, []);
+
+  useEffect(() => {
+    if (!image) {
+      setPreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(image);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [image]);
 
   async function loadMemories() {
     try {
@@ -344,61 +542,155 @@ function Memories({
   }
 
   async function createMemory() {
+    setBusy(true);
     try {
       const form = new FormData();
       form.append("content", content);
       if (location) form.append("location", location);
       if (occurredAt) form.append("occurred_at", new Date(occurredAt).toISOString());
+      if (image) form.append("image", image);
       await apiFormRequest(session, "/api/memories", form);
       setContent("");
       setLocation("");
       setOccurredAt("");
+      setImage(null);
+      if (fileRef.current) fileRef.current.value = "";
       showOk("Memory saved");
       await loadMemories();
     } catch (error) {
       showError(error);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function updateMemory() {
+    if (!editing) return;
+    setBusy(true);
+    try {
+      await apiRequest(session, `/api/memories/${editing.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          content: editing.content || null,
+          location: editing.location || null,
+          sentiment: editing.sentiment || null,
+        }),
+      });
+      setEditing(null);
+      showOk("Memory updated");
+      await loadMemories();
+    } catch (error) {
+      showError(error);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteMemory(memoryId: string) {
+    setBusy(true);
+    try {
+      await apiRequest(session, `/api/memories/${memoryId}`, { method: "DELETE" });
+      showOk("Memory deleted");
+      await loadMemories();
+    } catch (error) {
+      showError(error);
+    } finally {
+      setBusy(false);
     }
   }
 
   return (
-    <div className="stack">
-      <div className="section-title">
-        <h2>Memories</h2>
-        <button className="icon-only" onClick={loadMemories} title="Refresh" type="button">
-          <RefreshCw size={18} />
-        </button>
-      </div>
-      <div className="panel form-grid">
+    <div className="view-stack">
+      <SectionTitle title="Memories" subtitle="Capture photos, places, and the details that usually disappear." icon={Heart} />
+      <section className="composer">
         <label className="wide">
           Memory
-          <textarea value={content} onChange={(event) => setContent(event.target.value)} />
+          <textarea value={content} onChange={(event) => setContent(event.target.value)} placeholder="What happened today?" />
         </label>
-        <label>
-          Location
-          <input value={location} onChange={(event) => setLocation(event.target.value)} />
-        </label>
-        <label>
-          When
-          <input type="datetime-local" value={occurredAt} onChange={(event) => setOccurredAt(event.target.value)} />
-        </label>
-        <button onClick={createMemory} type="button">
-          <Plus size={18} />
-          Add
-        </button>
-      </div>
-      <div className="list">
-        {memories.map((memory) => (
-          <article className="item" key={memory.id}>
-            <p>{memory.content || "Image memory"}</p>
-            <div className="meta">
-              {memory.location ? <span>{memory.location}</span> : null}
-              {memory.sentiment ? <span>{memory.sentiment}</span> : null}
-              {memory.timestamp ? <span>{new Date(memory.timestamp).toLocaleDateString()}</span> : null}
-            </div>
-            {memory.image_signed_url ? <img alt="" src={memory.image_signed_url} /> : null}
-          </article>
-        ))}
-      </div>
+        <div className="composer-row">
+          <label>
+            Location
+            <input value={location} onChange={(event) => setLocation(event.target.value)} placeholder="Cafe, beach, home..." />
+          </label>
+          <label>
+            When
+            <input type="datetime-local" value={occurredAt} onChange={(event) => setOccurredAt(event.target.value)} />
+          </label>
+        </div>
+        <div className="upload-row">
+          <button className="secondary" onClick={() => fileRef.current?.click()} type="button">
+            <Upload size={17} />
+            {image ? image.name : "Add photo"}
+          </button>
+          <input
+            ref={fileRef}
+            hidden
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            onChange={(event) => setImage(event.target.files?.[0] ?? null)}
+          />
+          {previewUrl ? <img className="image-preview" alt="" src={previewUrl} /> : null}
+          <button disabled={busy || (!content.trim() && !image)} onClick={createMemory} type="button">
+            <Plus size={18} />
+            Save memory
+          </button>
+        </div>
+      </section>
+
+      <section className="memory-board">
+        <SectionHeader title="All memories" actionLabel="Refresh" onAction={loadMemories} />
+        {memories.length ? (
+          <div className="memory-grid">
+            {memories.map((memory) => (
+              <article className="memory-card" key={memory.id}>
+                {memory.image_signed_url ? <img alt="" src={memory.image_signed_url} /> : null}
+                <p>{memory.content || "Image memory"}</p>
+                <div className="meta">
+                  {memory.location ? <span>{memory.location}</span> : null}
+                  {memory.sentiment ? <span>{memory.sentiment}</span> : null}
+                  {memory.timestamp ? <span>{formatDate(memory.timestamp)}</span> : null}
+                </div>
+                <div className="card-actions">
+                  <button className="icon-only ghost" onClick={() => setEditing(memory)} title="Edit memory" type="button">
+                    <Pencil size={16} />
+                  </button>
+                  <button className="icon-only danger" disabled={busy} onClick={() => deleteMemory(memory.id)} title="Delete memory" type="button">
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <EmptyState title="No memories yet" text="Add a note or photo to start your shared archive." />
+        )}
+      </section>
+
+      {editing ? (
+        <Modal title="Edit memory" onClose={() => setEditing(null)}>
+          <label>
+            Memory
+            <textarea value={editing.content ?? ""} onChange={(event) => setEditing({ ...editing, content: event.target.value })} />
+          </label>
+          <label>
+            Location
+            <input value={editing.location ?? ""} onChange={(event) => setEditing({ ...editing, location: event.target.value })} />
+          </label>
+          <label>
+            Sentiment
+            <input value={editing.sentiment ?? ""} onChange={(event) => setEditing({ ...editing, sentiment: event.target.value })} />
+          </label>
+          <div className="button-row">
+            <button disabled={busy} onClick={updateMemory} type="button">
+              <Check size={17} />
+              Save
+            </button>
+            <button className="secondary" onClick={() => setEditing(null)} type="button">
+              Cancel
+            </button>
+          </div>
+        </Modal>
+      ) : null}
     </div>
   );
 }
@@ -407,11 +699,13 @@ function AskAi({ session, showError }: { session: Session; showError: (error: un
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState<AskResponse | null>(null);
   const [busy, setBusy] = useState(false);
+  const suggestions = ["What places do we love?", "What gift ideas fit us?", "What did we enjoy recently?"];
 
-  async function ask() {
+  async function ask(nextQuestion = question) {
+    setQuestion(nextQuestion);
     setBusy(true);
     try {
-      const query = encodeURIComponent(question);
+      const query = encodeURIComponent(nextQuestion);
       setAnswer(await apiRequest<AskResponse>(session, `/api/ask?question=${query}`));
     } catch (error) {
       showError(error);
@@ -421,30 +715,35 @@ function AskAi({ session, showError }: { session: Session; showError: (error: un
   }
 
   return (
-    <div className="stack">
-      <div className="section-title">
-        <h2>Soulmate AI</h2>
-        <Sparkles size={20} />
-      </div>
-      <div className="panel">
+    <div className="view-stack">
+      <SectionTitle title="Soulmate AI" subtitle="Ask from your shared memories, preferences, and moments." icon={Sparkles} />
+      <section className="chat-panel">
         <label>
           Question
-          <textarea value={question} onChange={(event) => setQuestion(event.target.value)} />
+          <textarea value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Ask something about your relationship..." />
         </label>
-        <button disabled={busy || question.length < 2} onClick={ask} type="button">
-          Ask
-        </button>
-      </div>
-      {answer ? (
-        <div className="panel answer">
-          <p>{answer.answer}</p>
-          <h3>Sources</h3>
-          {answer.sources.map((source) => (
-            <div className="source" key={source.id}>
-              {source.content}
-            </div>
+        <div className="suggestion-row">
+          {suggestions.map((item) => (
+            <button className="chip-button" key={item} onClick={() => ask(item)} type="button">
+              {item}
+            </button>
           ))}
         </div>
+        <button disabled={busy || question.length < 2} onClick={() => ask()} type="button">
+          <Send size={17} />
+          Ask
+        </button>
+      </section>
+      {answer ? (
+        <section className="answer-panel">
+          <p>{answer.answer}</p>
+          <h3>Sources</h3>
+          <div className="source-list">
+            {answer.sources.map((source) => (
+              <MemoryMini key={source.id} memory={source} />
+            ))}
+          </div>
+        </section>
       ) : null}
     </div>
   );
@@ -463,10 +762,15 @@ function Wiki({
   const [wishlist, setWishlist] = useState<WishlistItem[]>([]);
   const [dates, setDates] = useState<ImportantDate[]>([]);
   const [category, setCategory] = useState("food");
-  const [details, setDetails] = useState('{"likes":["Thai food"]}');
+  const [likes, setLikes] = useState("");
+  const [dislikes, setDislikes] = useState("");
+  const [notes, setNotes] = useState("");
   const [wishTitle, setWishTitle] = useState("");
+  const [wishDescription, setWishDescription] = useState("");
+  const [wishStatus, setWishStatus] = useState("open");
   const [dateTitle, setDateTitle] = useState("");
   const [dateValue, setDateValue] = useState("");
+  const [dateType, setDateType] = useState("anniversary");
 
   useEffect(() => {
     loadWiki();
@@ -491,8 +795,18 @@ function Wiki({
     try {
       await apiRequest(session, "/api/preferences", {
         method: "POST",
-        body: JSON.stringify({ category, detail_json: JSON.parse(details) }),
+        body: JSON.stringify({
+          category,
+          detail_json: {
+            likes: splitList(likes),
+            dislikes: splitList(dislikes),
+            notes: notes || null,
+          },
+        }),
       });
+      setLikes("");
+      setDislikes("");
+      setNotes("");
       showOk("Preference saved");
       await loadWiki();
     } catch (error) {
@@ -504,9 +818,10 @@ function Wiki({
     try {
       await apiRequest(session, "/api/wishlist", {
         method: "POST",
-        body: JSON.stringify({ title: wishTitle, category: "gift", status: "open" }),
+        body: JSON.stringify({ title: wishTitle, description: wishDescription || null, category: "gift", status: wishStatus }),
       });
       setWishTitle("");
+      setWishDescription("");
       showOk("Wishlist item saved");
       await loadWiki();
     } catch (error) {
@@ -518,7 +833,7 @@ function Wiki({
     try {
       await apiRequest(session, "/api/important-dates", {
         method: "POST",
-        body: JSON.stringify({ title: dateTitle, date_value: dateValue, date_type: "anniversary" }),
+        body: JSON.stringify({ title: dateTitle, date_value: dateValue, date_type: dateType }),
       });
       setDateTitle("");
       setDateValue("");
@@ -530,49 +845,78 @@ function Wiki({
   }
 
   return (
-    <div className="grid three">
-      <div className="panel">
-        <h2>Preferences</h2>
-        <label>
-          Category
-          <input value={category} onChange={(event) => setCategory(event.target.value)} />
-        </label>
-        <label>
-          JSON
-          <textarea value={details} onChange={(event) => setDetails(event.target.value)} />
-        </label>
-        <button onClick={addPreference} type="button">
-          Save
-        </button>
-        <MiniList items={preferences.map((item) => `${item.category}: ${JSON.stringify(item.detail_json)}`)} />
-      </div>
-      <div className="panel">
-        <h2>Wishlist</h2>
-        <label>
-          Title
-          <input value={wishTitle} onChange={(event) => setWishTitle(event.target.value)} />
-        </label>
-        <button onClick={addWishlist} type="button">
-          <Gift size={18} />
-          Add
-        </button>
-        <MiniList items={wishlist.map((item) => item.title)} />
-      </div>
-      <div className="panel">
-        <h2>Dates</h2>
-        <label>
-          Title
-          <input value={dateTitle} onChange={(event) => setDateTitle(event.target.value)} />
-        </label>
-        <label>
-          Date
-          <input type="date" value={dateValue} onChange={(event) => setDateValue(event.target.value)} />
-        </label>
-        <button onClick={addDate} type="button">
-          <CalendarDays size={18} />
-          Add
-        </button>
-        <MiniList items={dates.map((item) => `${item.title}: ${item.date_value}`)} />
+    <div className="view-stack">
+      <SectionTitle title="Couple Wiki" subtitle="The details that make planning easier and more personal." icon={Gift} />
+      <div className="wiki-grid">
+        <section className="surface">
+          <h2>Preferences</h2>
+          <label>
+            Category
+            <input value={category} onChange={(event) => setCategory(event.target.value)} />
+          </label>
+          <label>
+            Likes
+            <input value={likes} onChange={(event) => setLikes(event.target.value)} placeholder="Thai food, bookstores, quiet cafes" />
+          </label>
+          <label>
+            Dislikes
+            <input value={dislikes} onChange={(event) => setDislikes(event.target.value)} placeholder="Crowds, spicy food" />
+          </label>
+          <label>
+            Notes
+            <textarea value={notes} onChange={(event) => setNotes(event.target.value)} />
+          </label>
+          <button disabled={!category} onClick={addPreference} type="button">
+            Save preference
+          </button>
+          <MiniList items={preferences.map((item) => `${item.category}: ${formatPreference(item.detail_json)}`)} />
+        </section>
+
+        <section className="surface">
+          <h2>Wishlist</h2>
+          <label>
+            Gift or idea
+            <input value={wishTitle} onChange={(event) => setWishTitle(event.target.value)} />
+          </label>
+          <label>
+            Notes
+            <textarea value={wishDescription} onChange={(event) => setWishDescription(event.target.value)} />
+          </label>
+          <label>
+            Status
+            <select value={wishStatus} onChange={(event) => setWishStatus(event.target.value)}>
+              <option value="open">Open</option>
+              <option value="planned">Planned</option>
+              <option value="done">Done</option>
+            </select>
+          </label>
+          <button disabled={!wishTitle} onClick={addWishlist} type="button">
+            <Gift size={18} />
+            Add idea
+          </button>
+          <MiniList items={wishlist.map((item) => `${item.title} · ${item.status}`)} />
+        </section>
+
+        <section className="surface">
+          <h2>Important dates</h2>
+          <label>
+            Title
+            <input value={dateTitle} onChange={(event) => setDateTitle(event.target.value)} />
+          </label>
+          <label>
+            Date
+            <input type="date" value={dateValue} onChange={(event) => setDateValue(event.target.value)} />
+          </label>
+          <label>
+            Type
+            <input value={dateType} onChange={(event) => setDateType(event.target.value)} />
+          </label>
+          <button disabled={!dateTitle || !dateValue} onClick={addDate} type="button">
+            <CalendarDays size={18} />
+            Add date
+          </button>
+          <MiniList items={dates.map((item) => `${item.title}: ${formatDate(item.date_value)}`)} />
+        </section>
       </div>
     </div>
   );
@@ -585,33 +929,171 @@ function LoveMap({ session, showError }: { session: Session; showError: (error: 
     apiRequest<Memory[]>(session, "/api/love-map").then(setItems).catch(showError);
   }, []);
 
+  const grouped = items.reduce<Record<string, Memory[]>>((acc, item) => {
+    const key = item.location || "Unknown place";
+    acc[key] = [...(acc[key] || []), item];
+    return acc;
+  }, {});
+
   return (
-    <div className="stack">
-      <div className="section-title">
-        <h2>Love Map</h2>
-        <MapPin size={20} />
-      </div>
-      <div className="map-list">
-        {items.map((item) => (
-          <article className="map-item" key={item.id}>
-            <MapPin size={18} />
-            <div>
-              <strong>{item.location}</strong>
-              <p>{item.content}</p>
-            </div>
-          </article>
-        ))}
+    <div className="view-stack">
+      <SectionTitle title="Love Map" subtitle="Places that hold parts of your story." icon={MapPin} />
+      <div className="map-board">
+        {Object.entries(grouped).length ? (
+          Object.entries(grouped).map(([location, memories]) => (
+            <article className="location-card" key={location}>
+              <MapPin size={20} />
+              <div>
+                <h2>{location}</h2>
+                <span>{memories.length} memories</span>
+                {memories.slice(0, 2).map((memory) => (
+                  <p key={memory.id}>{memory.content}</p>
+                ))}
+              </div>
+            </article>
+          ))
+        ) : (
+          <EmptyState title="No places yet" text="Add a memory with a location to start your love map." />
+        )}
       </div>
     </div>
+  );
+}
+
+function SettingsView({ profile, apiBaseUrl }: { profile: Profile; apiBaseUrl: string }) {
+  return (
+    <div className="view-stack">
+      <SectionTitle title="Settings" subtitle="Account and deployment details for this Haven." icon={Settings} />
+      <section className="surface settings-list">
+        <InfoRow label="Display name" value={profile.display_name || "Not set"} />
+        <InfoRow label="Role" value={profile.role || "member"} />
+        <InfoRow label="Couple ID" value={profile.couple_id} />
+        <InfoRow label="API" value={apiBaseUrl} />
+        <button className="secondary" onClick={() => supabase.auth.signOut()} type="button">
+          <LogOut size={17} />
+          Sign out
+        </button>
+      </section>
+    </div>
+  );
+}
+
+function SectionTitle({ title, subtitle, icon: Icon }: { title: string; subtitle: string; icon: typeof Heart }) {
+  return (
+    <header className="section-title-block">
+      <div>
+        <p className="eyebrow">{title}</p>
+        <h1>{title}</h1>
+        <span>{subtitle}</span>
+      </div>
+      <div className="section-icon">
+        <Icon size={22} />
+      </div>
+    </header>
+  );
+}
+
+function SectionHeader({ title, actionLabel, onAction }: { title: string; actionLabel?: string; onAction?: () => void }) {
+  return (
+    <div className="section-header">
+      <h2>{title}</h2>
+      {actionLabel ? (
+        <button className="text-button" onClick={onAction} type="button">
+          {actionLabel}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function MetricCard({ label, value }: { label: string; value: string }) {
+  return (
+    <article className="metric-card">
+      <strong>{value}</strong>
+      <span>{label}</span>
+    </article>
+  );
+}
+
+function MemoryMini({ memory }: { memory: Pick<Memory, "id" | "content" | "location" | "timestamp" | "sentiment"> }) {
+  return (
+    <article className="memory-mini">
+      <p>{memory.content || "Image memory"}</p>
+      <div className="meta">
+        {memory.location ? <span>{memory.location}</span> : null}
+        {memory.sentiment ? <span>{memory.sentiment}</span> : null}
+        {memory.timestamp ? <span>{formatDate(memory.timestamp)}</span> : null}
+      </div>
+    </article>
   );
 }
 
 function MiniList({ items }: { items: string[] }) {
   return (
     <div className="mini-list">
-      {items.map((item, index) => (
-        <div key={`${item}-${index}`}>{item}</div>
-      ))}
+      {items.length ? items.map((item, index) => <div key={`${item}-${index}`}>{item}</div>) : <span className="muted">Nothing saved yet</span>}
     </div>
   );
+}
+
+function EmptyState({ title, text }: { title: string; text: string }) {
+  return (
+    <div className="empty-state">
+      <Sparkles size={22} />
+      <strong>{title}</strong>
+      <p>{text}</p>
+    </div>
+  );
+}
+
+function SkeletonRows() {
+  return (
+    <div className="skeleton-stack">
+      <span />
+      <span />
+      <span />
+    </div>
+  );
+}
+
+function Modal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section className="modal-card" role="dialog" aria-modal="true" aria-label={title}>
+        <div className="modal-header">
+          <h2>{title}</h2>
+          <button className="icon-only ghost" onClick={onClose} title="Close" type="button">
+            <X size={17} />
+          </button>
+        </div>
+        {children}
+      </section>
+    </div>
+  );
+}
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="info-row">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function splitList(value: string): string[] {
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function formatPreference(value: Record<string, unknown>): string {
+  const likes = Array.isArray(value.likes) ? value.likes.join(", ") : "";
+  const notes = typeof value.notes === "string" ? value.notes : "";
+  return [likes, notes].filter(Boolean).join(" · ") || JSON.stringify(value);
+}
+
+function formatDate(value: string): string {
+  return new Date(value).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
