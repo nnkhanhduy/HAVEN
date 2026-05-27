@@ -17,12 +17,24 @@ app.add_middleware(
 app.include_router(router, prefix=settings.api_v1_prefix)
 
 
+@app.get("/")
+def root() -> dict[str, str]:
+    return {
+        "status": "ok",
+        "service": settings.app_name,
+        "version": settings.app_version,
+        "api_prefix": settings.api_v1_prefix,
+        "health": "/health",
+        "ready": "/ready",
+    }
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "service": settings.app_name}
+    return {"status": "ok", "service": settings.app_name, "version": settings.app_version}
 
 
 @app.get("/ready")
 def ready() -> dict[str, str]:
     supabase.table("profiles").select("id").limit(1).execute()
-    return {"status": "ready", "service": settings.app_name}
+    return {"status": "ready", "service": settings.app_name, "version": settings.app_version}

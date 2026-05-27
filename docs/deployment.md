@@ -63,11 +63,12 @@ ALLOWED_IMAGE_CONTENT_TYPES=image/jpeg,image/png,image/webp
 After deploy:
 
 ```bash
+curl https://your-render-api.onrender.com/
 curl https://your-render-api.onrender.com/health
 curl https://your-render-api.onrender.com/ready
 ```
 
-`/health` only confirms the API process is alive. `/ready` confirms Supabase connectivity.
+`/` explains the API entrypoints, `/health` only confirms the API process is alive, and `/ready` confirms Supabase connectivity.
 
 ## Vercel Web
 

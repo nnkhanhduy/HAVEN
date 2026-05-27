@@ -8,6 +8,8 @@ services:
     envVars:
       - key: APP_NAME
         value: haven
+      - key: APP_VERSION
+        sync: false
       - key: API_V1_PREFIX
         value: /api
       - key: CORS_ORIGINS

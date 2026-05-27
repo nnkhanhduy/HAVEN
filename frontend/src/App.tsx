@@ -45,6 +45,7 @@ export function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [profileLoading, setProfileLoading] = useState(false);
   const [notice, setNotice] = useState<Notice>(null);
 
   useEffect(() => {
@@ -68,11 +69,14 @@ export function App() {
 
   async function loadProfile() {
     if (!session) return;
+    setProfileLoading(true);
     try {
       const nextProfile = await apiRequest<Profile | null>(session, "/api/onboarding/profile");
       setProfile(nextProfile);
     } catch (error) {
       showError(error);
+    } finally {
+      setProfileLoading(false);
     }
   }
 
@@ -84,8 +88,8 @@ export function App() {
     setNotice({ type: "ok", text });
   }
 
-  if (loading) {
-    return <LoadingScreen />;
+  if (loading || (session && profileLoading)) {
+    return <LoadingScreen text={session ? "Checking your Haven" : "Opening your Haven"} />;
   }
 
   return (
@@ -102,13 +106,14 @@ export function App() {
   );
 }
 
-function LoadingScreen() {
+function LoadingScreen({ text = "Opening your Haven" }: { text?: string }) {
   return (
     <main className="loading-screen">
       <div className="loading-mark">
         <Heart size={28} />
       </div>
-      <p>Opening your Haven</p>
+      <p>{text}</p>
+      <span className="version-badge">Frontend {shortVersion(appVersion)}</span>
     </main>
   );
 }
@@ -302,10 +307,13 @@ function OnboardingPanel({
           </span>
           <span>Haven</span>
         </div>
-        <button className="ghost" onClick={() => supabase.auth.signOut()} type="button">
-          <LogOut size={17} />
-          Sign out
-        </button>
+        <div className="header-actions">
+          <span className="version-badge">Frontend {shortVersion(appVersion)}</span>
+          <button className="ghost" onClick={() => supabase.auth.signOut()} type="button">
+            <LogOut size={17} />
+            Sign out
+          </button>
+        </div>
       </div>
       <div className="onboarding-copy">
         <p className="eyebrow">One more step</p>
@@ -1206,7 +1214,7 @@ function SettingsView({
         <InfoRow label="Couple ID" value={profile.couple_id} />
         <InfoRow label="API" value={apiBaseUrl} />
         <InfoRow label="API health" value={health} />
-        <InfoRow label="Frontend version" value={appVersion} />
+        <InfoRow label="Frontend version" value={shortVersion(appVersion)} />
         {inviteCode ? <InfoRow label="Latest invite" value={inviteCode} /> : null}
         <div className="button-row">
           <button className="secondary" onClick={() => copyValue(profile.couple_id, "Couple ID")} type="button">
@@ -1344,4 +1352,8 @@ function formatPreference(value: Record<string, unknown>): string {
 
 function formatDate(value: string): string {
   return new Date(value).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+function shortVersion(value: string): string {
+  return value.length > 12 ? value.slice(0, 7) : value;
 }

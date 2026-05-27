@@ -153,6 +153,16 @@ h3 {
   min-height: 100vh;
 }
 
+.version-badge {
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid #e1d7ca;
+  border-radius: 999px;
+  color: #756d64;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 6px 10px;
+}
+
 .loading-mark,
 .brand-mark,
 .section-icon {
@@ -327,6 +337,12 @@ h3 {
   align-items: center;
   display: flex;
   justify-content: space-between;
+}
+
+.header-actions {
+  align-items: center;
+  display: flex;
+  gap: 10px;
 }
 
 .onboarding-copy {
@@ -938,7 +954,8 @@ h3 {
   .hero-panel,
   .section-title-block,
   .upload-row,
-  .info-row {
+  .info-row,
+  .header-actions {
     align-items: stretch;
     flex-direction: column;
   }
