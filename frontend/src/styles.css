@@ -366,6 +366,22 @@ h3 {
   text-transform: uppercase;
 }
 
+.quick-invite {
+  display: grid;
+  gap: 14px;
+}
+
+.invite-display {
+  background: #25211d;
+  border-radius: 8px;
+  color: #fff;
+  font-size: clamp(28px, 6vw, 46px);
+  font-weight: 950;
+  letter-spacing: 0.12em;
+  padding: 18px;
+  text-align: center;
+}
+
 .workspace-shell {
   display: grid;
   grid-template-columns: 260px minmax(0, 1fr);

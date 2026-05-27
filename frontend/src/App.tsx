@@ -14,6 +14,7 @@ import {
   Plus,
   RefreshCw,
   Send,
+  Share2,
   Settings,
   Sparkles,
   Trash2,
@@ -25,6 +26,11 @@ import type { AskResponse, ImportantDate, Memory, Preference, Profile, WishlistI
 
 type Notice = { type: "ok" | "error"; text: string } | null;
 type Tab = "today" | "memories" | "ask" | "wiki" | "map" | "settings";
+type CreateCoupleResult = {
+  couple_id: string;
+  profile: Profile;
+  invite?: { code: string; couple_id: string; expires_at?: string | null } | null;
+};
 
 const tabs = [
   { id: "today" as const, label: "Today", icon: Sparkles },
@@ -228,12 +234,13 @@ function OnboardingPanel({
   const [displayName, setDisplayName] = useState("");
   const [anniversaryDate, setAnniversaryDate] = useState("");
   const [inviteCode, setInviteCode] = useState("");
+  const [createdInvite, setCreatedInvite] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function createCouple() {
     setBusy(true);
     try {
-      await apiRequest(session, "/api/onboarding/couple", {
+      const result = await apiRequest<CreateCoupleResult>(session, "/api/onboarding/couple", {
         method: "POST",
         body: JSON.stringify({
           display_name: displayName || null,
@@ -241,12 +248,27 @@ function OnboardingPanel({
           anniversary_date: anniversaryDate || null,
         }),
       });
-      showOk("Your Haven is ready");
-      await refreshProfile();
+      if (result.invite?.code) {
+        setCreatedInvite(result.invite.code);
+        showOk("Your Haven is ready. Share the invite code with your partner.");
+      } else {
+        showOk("Your Haven is ready");
+        await refreshProfile();
+      }
     } catch (error) {
       showError(error);
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function copyInvite() {
+    if (!createdInvite) return;
+    try {
+      await navigator.clipboard.writeText(createdInvite);
+      showOk("Invite code copied");
+    } catch {
+      showOk(`Invite code: ${createdInvite}`);
     }
   }
 
@@ -291,19 +313,38 @@ function OnboardingPanel({
       <div className="choice-grid">
         <section className="choice-card">
           <h2>Create a Haven</h2>
-          <p>Start a shared space and invite your partner when you are ready.</p>
-          <label>
-            Display name
-            <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
-          </label>
-          <label>
-            Anniversary
-            <input type="date" value={anniversaryDate} onChange={(event) => setAnniversaryDate(event.target.value)} />
-          </label>
-          <button disabled={busy} onClick={createCouple} type="button">
-            <Plus size={18} />
-            Create Haven
-          </button>
+          {createdInvite ? (
+            <div className="quick-invite">
+              <p>Send this code to your partner. They can paste it into Join with invite.</p>
+              <div className="invite-display">{createdInvite}</div>
+              <div className="button-row">
+                <button onClick={copyInvite} type="button">
+                  <Share2 size={17} />
+                  Copy code
+                </button>
+                <button className="secondary" onClick={refreshProfile} type="button">
+                  Continue
+                  <ChevronRight size={17} />
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <p>Start a shared space and get an invite code immediately.</p>
+              <label>
+                Display name
+                <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
+              </label>
+              <label>
+                Anniversary
+                <input type="date" value={anniversaryDate} onChange={(event) => setAnniversaryDate(event.target.value)} />
+              </label>
+              <button disabled={busy} onClick={createCouple} type="button">
+                <Plus size={18} />
+                Create and get code
+              </button>
+            </>
+          )}
         </section>
         <section className="choice-card accent">
           <h2>Join with invite</h2>

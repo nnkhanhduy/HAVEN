@@ -16,15 +16,16 @@ class CreateCoupleRequest(BaseModel):
     anniversary_date: str | None = None
 
 
-class CreateCoupleResponse(BaseModel):
-    couple_id: str
-    profile: ProfileResponse
-
-
 class InviteResponse(BaseModel):
     code: str
     couple_id: str
     expires_at: str | None = None
+
+
+class CreateCoupleResponse(BaseModel):
+    couple_id: str
+    profile: ProfileResponse
+    invite: InviteResponse | None = None
 
 
 class JoinCoupleRequest(BaseModel):

@@ -51,25 +51,33 @@ class OnboardingService:
             display_name=payload.display_name,
             role=payload.role,
         )
-        return CreateCoupleResponse(couple_id=couple_id, profile=ProfileResponse(**profile))
+        invite = self._create_invite_for_profile(user.user_id, couple_id)
+        return CreateCoupleResponse(
+            couple_id=couple_id,
+            profile=ProfileResponse(**profile),
+            invite=invite,
+        )
 
     def create_invite(self, user: AuthenticatedUser) -> InviteResponse:
         profile = self.get_profile(user)
         if not profile:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Profile not found")
 
+        return self._create_invite_for_profile(user.user_id, profile.couple_id)
+
+    def _create_invite_for_profile(self, user_id: str, couple_id: str) -> InviteResponse:
         code = uuid4().hex[:10].upper()
         expires_at = (datetime.now(UTC) + timedelta(days=7)).isoformat()
         row = {
-            "couple_id": profile.couple_id,
-            "created_by_user_id": user.user_id,
+            "couple_id": couple_id,
+            "created_by_user_id": user_id,
             "code": code,
             "expires_at": expires_at,
         }
         result = supabase.table("couple_invites").insert(row).execute()
         if not result.data:
             raise HTTPException(status_code=500, detail="Could not create invite")
-        return InviteResponse(code=code, couple_id=profile.couple_id, expires_at=expires_at)
+        return InviteResponse(code=code, couple_id=couple_id, expires_at=expires_at)
 
     def join_couple(
         self,
