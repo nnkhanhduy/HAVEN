@@ -266,7 +266,7 @@ class MemoryEngine:
             )
 
         content_type = image.content_type or ""
-        if content_type not in settings.allowed_image_content_types:
+        if content_type not in settings.allowed_image_content_type_list:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Unsupported image type",

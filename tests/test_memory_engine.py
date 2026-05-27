@@ -63,7 +63,7 @@ class FakeUploadFile:
 def test_validate_image_rejects_unsupported_content_type(monkeypatch):
     from app.services import memory_engine
 
-    monkeypatch.setattr(memory_engine.settings, "allowed_image_content_types", ["image/jpeg"])
+    monkeypatch.setattr(memory_engine.settings, "allowed_image_content_types", "image/jpeg")
 
     try:
         MemoryEngine()._validate_image(FakeUploadFile(), b"image-bytes")
