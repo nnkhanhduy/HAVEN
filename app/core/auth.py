@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+import httpx
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
@@ -8,6 +9,11 @@ from app.core.config import settings
 from app.services.supabase_client import supabase
 
 bearer = HTTPBearer(auto_error=True)
+
+
+@dataclass(frozen=True)
+class AuthenticatedUser:
+    user_id: str
 
 
 @dataclass(frozen=True)
@@ -36,10 +42,8 @@ def _decode_supabase_jwt(token: str) -> dict:
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(bearer),
 ) -> CurrentUser:
-    payload = _decode_supabase_jwt(credentials.credentials)
-    user_id = payload.get("sub")
-    if not user_id:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing user id")
+    authenticated_user = await get_authenticated_user(credentials)
+    user_id = authenticated_user.user_id
 
     profile_result = (
         supabase.table("profiles")
@@ -58,3 +62,44 @@ async def get_current_user(
         display_name=profile.get("display_name"),
         role=profile.get("role"),
     )
+
+
+async def get_authenticated_user(
+    credentials: HTTPAuthorizationCredentials = Depends(bearer),
+) -> AuthenticatedUser:
+    token = credentials.credentials
+    try:
+        payload = _decode_supabase_jwt(token)
+    except HTTPException:
+        payload = await _fetch_supabase_user(token)
+
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing user id")
+    return AuthenticatedUser(user_id=user_id)
+
+
+async def _fetch_supabase_user(token: str) -> dict:
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.get(
+                f"{settings.supabase_url}/auth/v1/user",
+                headers={
+                    "apikey": settings.supabase_service_role_key,
+                    "Authorization": f"Bearer {token}",
+                },
+            )
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication token",
+        ) from exc
+
+    if response.status_code != status.HTTP_200_OK:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication token",
+        )
+
+    data = response.json()
+    return {"sub": data.get("id")}

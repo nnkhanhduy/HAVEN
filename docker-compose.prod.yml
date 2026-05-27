@@ -1,0 +1,29 @@
+services:
+  api:
+    image: ${API_IMAGE:-ghcr.io/OWNER/REPO-api:latest}
+    env_file:
+      - .env
+    restart: unless-stopped
+    expose:
+      - "8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  web:
+    image: ${WEB_IMAGE:-ghcr.io/OWNER/REPO-web:latest}
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${WEB_PORT:-80}:80"

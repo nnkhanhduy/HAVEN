@@ -9,7 +9,7 @@ from openai import AsyncOpenAI
 
 from app.core.auth import CurrentUser
 from app.core.config import settings
-from app.models.schemas import AskResponse, RetrievedMemory, SuggestResponse
+from app.models.schemas import AskResponse, MemoryResponse, MemoryUpdate, RetrievedMemory, SuggestResponse
 from app.services.supabase_client import supabase
 
 
@@ -58,7 +58,55 @@ class MemoryEngine:
         result = supabase.table("memories").insert(memory_row).execute()
         if not result.data:
             raise HTTPException(status_code=500, detail="Could not create memory")
-        return result.data[0]
+        return self._with_signed_image_url(result.data[0])
+
+    def list_memories(self, user: CurrentUser, limit: int = 50) -> list[MemoryResponse]:
+        result = (
+            supabase.table("memories")
+            .select("id,content,image_url,location,sentiment,timestamp,created_at")
+            .eq("couple_id", user.couple_id)
+            .order("timestamp", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        return [MemoryResponse(**self._with_signed_image_url(item)) for item in result.data or []]
+
+    def get_memory(self, user: CurrentUser, memory_id: str) -> MemoryResponse:
+        memory = self._get_couple_memory(user.couple_id, memory_id)
+        return MemoryResponse(**self._with_signed_image_url(memory))
+
+    async def update_memory(
+        self,
+        user: CurrentUser,
+        memory_id: str,
+        payload: MemoryUpdate,
+    ) -> MemoryResponse:
+        updates = payload.model_dump(exclude_unset=True)
+        if not updates:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No fields to update")
+
+        if "occurred_at" in updates:
+            updates["timestamp"] = updates.pop("occurred_at")
+        if "content" in updates and updates["content"] is not None:
+            updates["vector_embedding"] = await self.embed_text(updates["content"])
+
+        result = (
+            supabase.table("memories")
+            .update(updates)
+            .eq("id", memory_id)
+            .eq("couple_id", user.couple_id)
+            .execute()
+        )
+        if not result.data:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Memory not found")
+        return MemoryResponse(**self._with_signed_image_url(result.data[0]))
+
+    def delete_memory(self, user: CurrentUser, memory_id: str) -> dict[str, str]:
+        memory = self._get_couple_memory(user.couple_id, memory_id)
+        supabase.table("memories").delete().eq("id", memory_id).eq("couple_id", user.couple_id).execute()
+        if memory.get("image_url"):
+            supabase.storage.from_(settings.supabase_memory_bucket).remove([memory["image_url"]])
+        return {"status": "deleted"}
 
     async def embed_text(self, text: str) -> list[float]:
         response = await self.client.embeddings.create(
@@ -208,6 +256,32 @@ class MemoryEngine:
             {"content-type": image.content_type or "application/octet-stream"},
         )
         return object_path
+
+    def _get_couple_memory(self, couple_id: str, memory_id: str) -> dict[str, Any]:
+        result = (
+            supabase.table("memories")
+            .select("id,content,image_url,location,sentiment,timestamp,created_at")
+            .eq("id", memory_id)
+            .eq("couple_id", couple_id)
+            .limit(1)
+            .execute()
+        )
+        if not result.data:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Memory not found")
+        return result.data[0]
+
+    def _with_signed_image_url(self, memory: dict[str, Any]) -> dict[str, Any]:
+        image_path = memory.get("image_url")
+        memory["image_signed_url"] = None
+        if not image_path:
+            return memory
+
+        signed = supabase.storage.from_(settings.supabase_memory_bucket).create_signed_url(
+            image_path,
+            3600,
+        )
+        memory["image_signed_url"] = signed.get("signedURL") or signed.get("signedUrl")
+        return memory
 
     def _get_preferences(self, couple_id: str) -> list[dict[str, Any]]:
         result = (
