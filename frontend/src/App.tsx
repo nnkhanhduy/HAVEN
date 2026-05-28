@@ -583,9 +583,9 @@ function Memories({
   const [memories, setMemories] = useState<Memory[]>([]);
   const [content, setContent] = useState("");
   const [location, setLocation] = useState("");
-  const [occurredAt, setOccurredAt] = useState("");
   const [image, setImage] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [composerOpen, setComposerOpen] = useState(false);
   const [editing, setEditing] = useState<Memory | null>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<Memory | null>(null);
   const [memoryView, setMemoryView] = useState<"diary" | "photos">("diary");
@@ -624,15 +624,14 @@ function Memories({
       const form = new FormData();
       form.append("content", content);
       if (location) form.append("location", location);
-      if (occurredAt) form.append("occurred_at", new Date(occurredAt).toISOString());
       if (image) form.append("image", image);
       await apiFormRequest(session, "/api/memories", form);
       setContent("");
       setLocation("");
-      setOccurredAt("");
       setImage(null);
+      setComposerOpen(false);
       if (fileRef.current) fileRef.current.value = "";
-      showOk("Memory saved");
+      showOk("Diary entry saved");
       await loadMemories();
     } catch (error) {
       showError(error);
@@ -682,41 +681,13 @@ function Memories({
 
   return (
     <div className="view-stack">
-      <SectionTitle title="Memories" subtitle="A shared diary for notes, photos, and the little pieces of your days." icon={Heart} />
-      <section className="composer diary-composer">
-        <label className="wide">
-          Diary note
-          <textarea value={content} onChange={(event) => setContent(event.target.value)} placeholder="Write the note you want to remember with this moment." />
-        </label>
-        <div className="composer-row">
-          <label>
-            Location
-            <input value={location} onChange={(event) => setLocation(event.target.value)} placeholder="Cafe, beach, home..." />
-          </label>
-          <label>
-            When
-            <input type="datetime-local" value={occurredAt} onChange={(event) => setOccurredAt(event.target.value)} />
-          </label>
-        </div>
-        <div className="upload-row">
-          <button className="secondary" onClick={() => fileRef.current?.click()} type="button">
-            <Upload size={17} />
-            {image ? image.name : "Add photo"}
-          </button>
-          <input
-            ref={fileRef}
-            hidden
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            onChange={(event) => setImage(event.target.files?.[0] ?? null)}
-          />
-          {previewUrl ? <img className="image-preview" alt="" src={previewUrl} /> : null}
-          <button disabled={busy || (!content.trim() && !image)} onClick={createMemory} type="button">
-            <Plus size={18} />
-            {busy ? "Saving..." : "Save diary entry"}
-          </button>
-        </div>
-      </section>
+      <div className="section-title-row">
+        <SectionTitle title="Memories" subtitle="A shared diary for notes, photos, and the little pieces of your days." icon={Heart} />
+        <button onClick={() => setComposerOpen(true)} type="button">
+          <Plus size={18} />
+          New diary entry
+        </button>
+      </div>
 
       <section className="memory-board">
         <div className="section-header">
@@ -806,6 +777,45 @@ function Memories({
             </button>
             <button className="secondary" onClick={() => setEditing(null)} type="button">
               Cancel
+            </button>
+          </div>
+        </Modal>
+      ) : null}
+
+      {composerOpen ? (
+        <Modal
+          title="New diary entry"
+          onClose={() => {
+            setComposerOpen(false);
+            setImage(null);
+            if (fileRef.current) fileRef.current.value = "";
+          }}
+        >
+          <p className="muted">Saved with the current time when you press save.</p>
+          <label className="wide">
+            Diary note
+            <textarea value={content} onChange={(event) => setContent(event.target.value)} placeholder="Write the note you want to remember with this moment." />
+          </label>
+          <label>
+            Location
+            <input value={location} onChange={(event) => setLocation(event.target.value)} placeholder="Cafe, beach, home..." />
+          </label>
+          <div className="upload-row">
+            <button className="secondary" onClick={() => fileRef.current?.click()} type="button">
+              <Upload size={17} />
+              {image ? image.name : "Add photo"}
+            </button>
+            <input
+              ref={fileRef}
+              hidden
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={(event) => setImage(event.target.files?.[0] ?? null)}
+            />
+            {previewUrl ? <img className="image-preview" alt="" src={previewUrl} /> : null}
+            <button disabled={busy || (!content.trim() && !image)} onClick={createMemory} type="button">
+              <Plus size={18} />
+              {busy ? "Saving..." : "Save entry"}
             </button>
           </div>
         </Modal>

@@ -523,6 +523,13 @@ h3 {
   gap: 18px;
 }
 
+.section-title-row {
+  align-items: center;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+}
+
 .section-title-block span {
   color: #756d64;
   display: inline-block;
@@ -1276,6 +1283,7 @@ h3 {
 
   .hero-panel,
   .section-title-block,
+  .section-title-row,
   .map-toolbar,
   .upload-row,
   .info-row,
@@ -1290,6 +1298,7 @@ h3 {
 
   .button-row button,
   .hero-panel button,
+  .section-title-row button,
   .map-toolbar button,
   .upload-row button {
     width: 100%;
