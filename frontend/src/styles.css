@@ -671,6 +671,11 @@ h3 {
   line-height: 1.45;
 }
 
+.location-note {
+  color: #756d64 !important;
+  font-size: 13px;
+}
+
 .meta {
   display: flex;
   flex-wrap: wrap;

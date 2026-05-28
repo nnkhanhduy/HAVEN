@@ -455,7 +455,7 @@ function Workspace({
         {tab === "memories" ? <Memories session={session} showError={showError} showOk={showOk} /> : null}
         {tab === "ask" ? <AskAi session={session} showError={showError} /> : null}
         {tab === "wiki" ? <Wiki session={session} showError={showError} showOk={showOk} /> : null}
-        {tab === "map" ? <LoveMap session={session} showError={showError} /> : null}
+        {tab === "map" ? <LoveMap session={session} showError={showError} showOk={showOk} /> : null}
         {tab === "settings" ? (
           <SettingsView session={session} profile={profile} apiBaseUrl={apiBaseUrl} showError={showError} showOk={showOk} />
         ) : null}
@@ -1146,12 +1146,22 @@ function Wiki({
   );
 }
 
-function LoveMap({ session, showError }: { session: Session; showError: (error: unknown) => void }) {
+function LoveMap({
+  session,
+  showError,
+  showOk,
+}: {
+  session: Session;
+  showError: (error: unknown) => void;
+  showOk: (text: string) => void;
+}) {
   const [items, setItems] = useState<Memory[]>([]);
   const [loading, setLoading] = useState(true);
   const [checkInOpen, setCheckInOpen] = useState(false);
+  const [editingCheckIn, setEditingCheckIn] = useState<Memory | null>(null);
   const [draftCoords, setDraftCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const [geoNotice, setGeoNotice] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const mapRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const markerLayerRef = useRef<L.LayerGroup | null>(null);
@@ -1238,8 +1248,58 @@ function LoveMap({ session, showError }: { session: Session; showError: (error: 
     );
   }
 
+  function startEditCheckIn(memory: Memory) {
+    setGeoNotice(null);
+    setDraftCoords(hasCoordinates(memory) ? { latitude: memory.latitude!, longitude: memory.longitude! } : null);
+    setEditingCheckIn(memory);
+  }
+
+  async function deleteCheckIn(memory: Memory) {
+    const label = memory.place_name || memory.location || "this check-in";
+    if (!window.confirm(`Delete ${label}?`)) return;
+    setDeletingId(memory.id);
+    try {
+      await apiRequest(session, `/api/memories/${memory.id}`, { method: "DELETE" });
+      showOk("Check-in deleted");
+      await loadMapItems();
+    } catch (error) {
+      showError(error);
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   const pinnedItems = items.filter(hasCoordinates);
   const unpinnedItems = items.filter((item) => !hasCoordinates(item));
+
+  function renderPlaceCard(memory: Memory) {
+    return (
+      <article className="location-card" key={memory.id}>
+        <MapPin size={20} />
+        <div>
+          <h2>{memory.place_name || memory.location || "Saved place"}</h2>
+          <span>{memory.timestamp ? formatDate(memory.timestamp) : "Check-in"}</span>
+          {memory.image_signed_url ? <img alt="" src={memory.image_signed_url} /> : null}
+          <p>{memory.content || memory.location_note || "A saved place in your story."}</p>
+          {memory.location_note ? <p className="location-note">{memory.location_note}</p> : null}
+          <div className="card-actions">
+            <button className="icon-only ghost" onClick={() => startEditCheckIn(memory)} title="Edit check-in" type="button">
+              <Pencil size={16} />
+            </button>
+            <button
+              className="icon-only danger"
+              disabled={deletingId === memory.id}
+              onClick={() => deleteCheckIn(memory)}
+              title="Delete check-in"
+              type="button"
+            >
+              <Trash2 size={16} />
+            </button>
+          </div>
+        </div>
+      </article>
+    );
+  }
 
   return (
     <div className="view-stack">
@@ -1271,26 +1331,14 @@ function LoveMap({ session, showError }: { session: Session; showError: (error: 
 
       {pinnedItems.length ? (
         <div className="map-board">
-          {pinnedItems.map((memory) => (
-            <article className="location-card" key={memory.id}>
-              <MapPin size={20} />
-              <div>
-                <h2>{memory.place_name || memory.location || "Saved place"}</h2>
-                <span>{memory.timestamp ? formatDate(memory.timestamp) : "Check-in"}</span>
-                {memory.image_signed_url ? <img alt="" src={memory.image_signed_url} /> : null}
-                <p>{memory.content || memory.location_note || "A saved place in your story."}</p>
-              </div>
-            </article>
-          ))}
+          {pinnedItems.map(renderPlaceCard)}
         </div>
       ) : null}
 
       {unpinnedItems.length ? (
         <section className="surface">
           <SectionHeader title="Places without pin" />
-          {unpinnedItems.map((memory) => (
-            <MemoryMini key={memory.id} memory={memory} />
-          ))}
+          <div className="map-board">{unpinnedItems.map(renderPlaceCard)}</div>
         </section>
       ) : null}
 
@@ -1305,6 +1353,23 @@ function LoveMap({ session, showError }: { session: Session; showError: (error: 
           }}
           session={session}
           showError={showError}
+          showOk={showOk}
+        />
+      ) : null}
+
+      {editingCheckIn ? (
+        <CheckInModal
+          coords={draftCoords}
+          geoNotice={geoNotice}
+          initialMemory={editingCheckIn}
+          onClose={() => setEditingCheckIn(null)}
+          onSaved={async () => {
+            setEditingCheckIn(null);
+            await loadMapItems();
+          }}
+          session={session}
+          showError={showError}
+          showOk={showOk}
         />
       ) : null}
     </div>
@@ -1314,42 +1379,88 @@ function LoveMap({ session, showError }: { session: Session; showError: (error: 
 function CheckInModal({
   coords,
   geoNotice,
+  initialMemory,
   onClose,
   onSaved,
   session,
   showError,
+  showOk,
 }: {
   coords: { latitude: number; longitude: number } | null;
   geoNotice: string | null;
+  initialMemory?: Memory | null;
   onClose: () => void;
   onSaved: () => Promise<void>;
   session: Session;
   showError: (error: unknown) => void;
+  showOk: (text: string) => void;
 }) {
-  const [placeName, setPlaceName] = useState("");
-  const [content, setContent] = useState("");
-  const [locationNote, setLocationNote] = useState("");
+  const [placeName, setPlaceName] = useState(initialMemory?.place_name || initialMemory?.location || "");
+  const [content, setContent] = useState(initialMemory?.content || "");
+  const [locationNote, setLocationNote] = useState(initialMemory?.location_note || "");
+  const [currentCoords, setCurrentCoords] = useState(coords);
   const [image, setImage] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
+  const [locating, setLocating] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const isEditing = Boolean(initialMemory);
+
+  function useCurrentLocation() {
+    if (!navigator.geolocation) {
+      showError(new Error("Location is not available in this browser"));
+      return;
+    }
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setCurrentCoords({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        });
+        setLocating(false);
+      },
+      () => {
+        showError(new Error("Location permission was not granted"));
+        setLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
+    );
+  }
 
   async function saveCheckIn() {
     setBusy(true);
     try {
-      const form = new FormData();
-      form.append("memory_type", "check_in");
-      form.append("content", content);
-      if (placeName.trim()) {
-        form.append("place_name", placeName.trim());
-        form.append("location", placeName.trim());
+      if (isEditing && initialMemory) {
+        await apiRequest(session, `/api/memories/${initialMemory.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            memory_type: "check_in",
+            content: content || null,
+            location: placeName.trim() || null,
+            place_name: placeName.trim() || null,
+            location_note: locationNote.trim() || null,
+            latitude: currentCoords?.latitude ?? null,
+            longitude: currentCoords?.longitude ?? null,
+          }),
+        });
+        showOk("Check-in updated");
+      } else {
+        const form = new FormData();
+        form.append("memory_type", "check_in");
+        form.append("content", content);
+        if (placeName.trim()) {
+          form.append("place_name", placeName.trim());
+          form.append("location", placeName.trim());
+        }
+        if (locationNote.trim()) form.append("location_note", locationNote.trim());
+        if (currentCoords) {
+          form.append("latitude", String(currentCoords.latitude));
+          form.append("longitude", String(currentCoords.longitude));
+        }
+        if (image) form.append("image", image);
+        await apiFormRequest(session, "/api/memories", form);
+        showOk("Check-in saved");
       }
-      if (locationNote.trim()) form.append("location_note", locationNote.trim());
-      if (coords) {
-        form.append("latitude", String(coords.latitude));
-        form.append("longitude", String(coords.longitude));
-      }
-      if (image) form.append("image", image);
-      await apiFormRequest(session, "/api/memories", form);
       await onSaved();
     } catch (error) {
       showError(error);
@@ -1359,7 +1470,7 @@ function CheckInModal({
   }
 
   return (
-    <Modal title="Check in" onClose={onClose}>
+    <Modal title={isEditing ? "Edit check-in" : "Check in"} onClose={onClose}>
       {geoNotice ? <p className="inline-warning">{geoNotice}</p> : null}
       <label>
         Place name
@@ -1373,27 +1484,41 @@ function CheckInModal({
         Location note
         <input value={locationNote} onChange={(event) => setLocationNote(event.target.value)} placeholder="Table by the window, sunset view..." />
       </label>
-      {coords ? (
+      {currentCoords ? (
         <div className="coordinate-row">
-          <span>{coords.latitude.toFixed(5)}</span>
-          <span>{coords.longitude.toFixed(5)}</span>
+          <span>{currentCoords.latitude.toFixed(5)}</span>
+          <span>{currentCoords.longitude.toFixed(5)}</span>
         </div>
       ) : null}
       <div className="upload-row">
-        <button className="secondary" onClick={() => fileRef.current?.click()} type="button">
-          <Upload size={17} />
-          {image ? image.name : "Add photo"}
+        <button className="secondary" disabled={locating} onClick={useCurrentLocation} type="button">
+          <LocateFixed size={17} />
+          {locating ? "Locating..." : currentCoords ? "Update pin" : "Add pin"}
         </button>
-        <input
-          ref={fileRef}
-          hidden
-          type="file"
-          accept="image/jpeg,image/png,image/webp"
-          onChange={(event) => setImage(event.target.files?.[0] ?? null)}
-        />
+        {currentCoords ? (
+          <button className="secondary" onClick={() => setCurrentCoords(null)} type="button">
+            <X size={17} />
+            Remove pin
+          </button>
+        ) : null}
+        {!isEditing ? (
+          <>
+            <button className="secondary" onClick={() => fileRef.current?.click()} type="button">
+              <Upload size={17} />
+              {image ? image.name : "Add photo"}
+            </button>
+            <input
+              ref={fileRef}
+              hidden
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={(event) => setImage(event.target.files?.[0] ?? null)}
+            />
+          </>
+        ) : null}
         <button disabled={busy || (!content.trim() && !image && !placeName.trim())} onClick={saveCheckIn} type="button">
           <Check size={17} />
-          {busy ? "Saving..." : "Save check-in"}
+          {busy ? "Saving..." : isEditing ? "Save changes" : "Save check-in"}
         </button>
       </div>
     </Modal>

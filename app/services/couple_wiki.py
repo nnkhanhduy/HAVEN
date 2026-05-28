@@ -139,11 +139,15 @@ class CoupleWikiService:
                 "location_note,sentiment,timestamp"
             )
             .eq("couple_id", user.couple_id)
-            .not_.is_("latitude", "null")
             .order("timestamp", desc=True)
             .execute()
         )
-        return [LoveMapMemory(**self._with_signed_image_url(item)) for item in result.data or []]
+        map_items = [
+            item
+            for item in result.data or []
+            if item.get("latitude") is not None or item.get("location") or item.get("place_name")
+        ]
+        return [LoveMapMemory(**self._with_signed_image_url(item)) for item in map_items]
 
     def _with_signed_image_url(self, memory: dict[str, Any]) -> dict[str, Any]:
         image_path = memory.get("image_url")
