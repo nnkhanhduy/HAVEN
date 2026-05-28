@@ -450,15 +450,17 @@ function Workspace({
         </button>
       </div>
 
-      <section className="content-panel page-enter">
-        {tab === "today" ? <Today session={session} profile={profile} setTab={setTab} showError={showError} /> : null}
-        {tab === "memories" ? <Memories session={session} showError={showError} showOk={showOk} /> : null}
-        {tab === "ask" ? <AskAi session={session} showError={showError} /> : null}
-        {tab === "wiki" ? <Wiki session={session} showError={showError} showOk={showOk} /> : null}
-        {tab === "map" ? <LoveMap session={session} showError={showError} showOk={showOk} /> : null}
-        {tab === "settings" ? (
-          <SettingsView session={session} profile={profile} apiBaseUrl={apiBaseUrl} showError={showError} showOk={showOk} />
-        ) : null}
+      <section className="content-panel">
+        <div key={tab} className="tab-view page-enter">
+          {tab === "today" ? <Today session={session} profile={profile} setTab={setTab} showError={showError} /> : null}
+          {tab === "memories" ? <Memories session={session} showError={showError} showOk={showOk} /> : null}
+          {tab === "ask" ? <AskAi session={session} showError={showError} /> : null}
+          {tab === "wiki" ? <Wiki session={session} showError={showError} showOk={showOk} /> : null}
+          {tab === "map" ? <LoveMap session={session} showError={showError} showOk={showOk} /> : null}
+          {tab === "settings" ? (
+            <SettingsView session={session} profile={profile} apiBaseUrl={apiBaseUrl} showError={showError} showOk={showOk} />
+          ) : null}
+        </div>
       </section>
 
       <nav className="bottom-nav">
@@ -682,7 +684,7 @@ function Memories({
   return (
     <div className="view-stack">
       <div className="section-title-row">
-        <SectionTitle title="Memories" subtitle="A shared diary for notes, photos, and the little pieces of your days." icon={Heart} />
+        <SectionTitle title="Memories" eyebrow="Shared Diary" subtitle="A shared diary for notes, photos, and the little pieces of your days." icon={Heart} />
         <button onClick={() => setComposerOpen(true)} type="button">
           <Plus size={18} />
           New diary entry
@@ -870,7 +872,7 @@ function AskAi({ session, showError }: { session: Session; showError: (error: un
 
   return (
     <div className="view-stack">
-      <SectionTitle title="Relationship Coach" subtitle="Advice and suggestions based on your diary, profile, places, ideas, and important dates." icon={Sparkles} />
+      <SectionTitle title="Relationship Coach" eyebrow="AI Coach" subtitle="Advice and suggestions based on your diary, profile, places, ideas, and important dates." icon={Sparkles} />
       <section className="chat-panel">
         <label>
           What would you like help with?
@@ -1035,7 +1037,7 @@ function Wiki({
 
   return (
     <div className="view-stack">
-      <SectionTitle title="Couple Profile" subtitle="The details Haven uses to understand your relationship and make better suggestions." icon={Gift} />
+      <SectionTitle title="Couple Profile" eyebrow="Wiki" subtitle="The details Haven uses to understand your relationship and make better suggestions." icon={Gift} />
       {loadingWiki ? <SkeletonRows /> : null}
       <div className="profile-overview">
         <MetricCard label="Preference notes" value={String(preferences.length)} />
@@ -1384,7 +1386,7 @@ function LoveMap({
 
   return (
     <div className="view-stack">
-      <SectionTitle title="Love Map" subtitle="Places that hold parts of your story." icon={MapPin} />
+      <SectionTitle title="Love Map" eyebrow="Places" subtitle="Places that hold parts of your story." icon={MapPin} />
       <section className="map-shell">
         <div className="map-toolbar">
           <div>
@@ -1696,7 +1698,7 @@ function SettingsView({
 
   return (
     <div className="view-stack">
-      <SectionTitle title="Settings" subtitle="Account and deployment details for this Haven." icon={Settings} />
+      <SectionTitle title="Settings" eyebrow="Account" subtitle="Account and deployment details for this Haven." icon={Settings} />
       <section className="surface settings-list">
         <ApiStatusPanel />
         <InfoRow label="Display name" value={profile.display_name || "Not set"} />
@@ -1721,11 +1723,21 @@ function SettingsView({
   );
 }
 
-function SectionTitle({ title, subtitle, icon: Icon }: { title: string; subtitle: string; icon: typeof Heart }) {
+function SectionTitle({
+  title,
+  subtitle,
+  eyebrow,
+  icon: Icon,
+}: {
+  title: string;
+  subtitle: string;
+  eyebrow?: string;
+  icon: typeof Heart;
+}) {
   return (
     <header className="section-title-block">
       <div>
-        <p className="eyebrow">{title}</p>
+        {eyebrow ? <p className="eyebrow">{eyebrow}</p> : null}
         <h1>{title}</h1>
         <span>{subtitle}</span>
       </div>
