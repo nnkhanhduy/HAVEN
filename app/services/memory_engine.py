@@ -9,7 +9,7 @@ from openai import AsyncOpenAI
 
 from app.core.auth import CurrentUser
 from app.core.config import settings
-from app.models.schemas import AskResponse, MemoryResponse, MemoryUpdate, RetrievedMemory, SuggestResponse
+from app.models.schemas import MEMORY_TYPES, AskResponse, MemoryResponse, MemoryUpdate, RetrievedMemory, SuggestResponse
 from app.services.supabase_client import supabase
 
 
@@ -21,10 +21,16 @@ class MemoryEngine:
         self,
         user: CurrentUser,
         content: str,
+        memory_type: str,
         location: str | None,
+        place_name: str | None,
+        latitude: float | None,
+        longitude: float | None,
+        location_note: str | None,
         occurred_at: str | None,
         image: UploadFile | None,
     ) -> dict[str, Any]:
+        self._validate_place(memory_type, latitude, longitude)
         image_url = None
         image_caption = None
         raw_image_bytes = None
@@ -36,7 +42,13 @@ class MemoryEngine:
             image_caption = await self._describe_image(image, raw_image_bytes)
 
         normalized_content = "\n\n".join(
-            part for part in [content.strip(), self._caption_block(image_caption)] if part
+            part
+            for part in [
+                content.strip(),
+                self._check_in_block(memory_type, place_name, location_note),
+                self._caption_block(image_caption),
+            ]
+            if part
         )
         if not normalized_content:
             raise HTTPException(
@@ -49,9 +61,14 @@ class MemoryEngine:
         memory_row = {
             "couple_id": user.couple_id,
             "content": normalized_content,
+            "memory_type": memory_type,
             "image_url": image_url,
             "vector_embedding": embedding,
-            "location": location or metadata.get("location"),
+            "location": location or place_name or metadata.get("location"),
+            "place_name": place_name,
+            "latitude": latitude,
+            "longitude": longitude,
+            "location_note": location_note,
             "sentiment": metadata.get("sentiment"),
             "timestamp": occurred_at or datetime.now(UTC).isoformat(),
         }
@@ -64,7 +81,10 @@ class MemoryEngine:
     def list_memories(self, user: CurrentUser, limit: int = 50) -> list[MemoryResponse]:
         result = (
             supabase.table("memories")
-            .select("id,content,image_url,location,sentiment,timestamp,created_at")
+            .select(
+                "id,content,memory_type,image_url,location,place_name,latitude,longitude,"
+                "location_note,sentiment,timestamp,created_at"
+            )
             .eq("couple_id", user.couple_id)
             .order("timestamp", desc=True)
             .limit(limit)
@@ -88,6 +108,12 @@ class MemoryEngine:
 
         if "occurred_at" in updates:
             updates["timestamp"] = updates.pop("occurred_at")
+        if "memory_type" in updates or "latitude" in updates or "longitude" in updates:
+            self._validate_place(
+                updates.get("memory_type", "memory"),
+                updates.get("latitude"),
+                updates.get("longitude"),
+            )
         if "content" in updates and updates["content"] is not None:
             updates["vector_embedding"] = await self.embed_text(updates["content"])
 
@@ -272,10 +298,26 @@ class MemoryEngine:
                 detail="Unsupported image type",
             )
 
+    def _validate_place(self, memory_type: str, latitude: float | None, longitude: float | None) -> None:
+        if memory_type not in MEMORY_TYPES:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported memory type")
+        if latitude is not None and not -90 <= latitude <= 90:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Latitude is out of range")
+        if longitude is not None and not -180 <= longitude <= 180:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Longitude is out of range")
+        if (latitude is None) != (longitude is None):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Latitude and longitude must be provided together",
+            )
+
     def _get_couple_memory(self, couple_id: str, memory_id: str) -> dict[str, Any]:
         result = (
             supabase.table("memories")
-            .select("id,content,image_url,location,sentiment,timestamp,created_at")
+            .select(
+                "id,content,memory_type,image_url,location,place_name,latitude,longitude,"
+                "location_note,sentiment,timestamp,created_at"
+            )
             .eq("id", memory_id)
             .eq("couple_id", couple_id)
             .limit(1)
@@ -311,6 +353,16 @@ class MemoryEngine:
         if not image_caption:
             return None
         return f"Image analysis:\n{image_caption}"
+
+    def _check_in_block(self, memory_type: str, place_name: str | None, location_note: str | None) -> str | None:
+        if memory_type != "check_in":
+            return None
+        lines = []
+        if place_name:
+            lines.append(f"Checked in at {place_name}.")
+        if location_note:
+            lines.append(f"Location note: {location_note}")
+        return "\n".join(lines) or None
 
     def _format_memories(self, memories: list[RetrievedMemory]) -> str:
         if not memories:

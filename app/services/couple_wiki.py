@@ -13,6 +13,7 @@ from app.models.schemas import (
     WishlistItemCreate,
     WishlistItemUpdate,
 )
+from app.core.config import settings
 from app.services.supabase_client import supabase
 
 
@@ -133,13 +134,25 @@ class CoupleWikiService:
     def love_map(self, user: CurrentUser) -> list[LoveMapMemory]:
         result = (
             supabase.table("memories")
-            .select("id,content,image_url,location,sentiment,timestamp")
+            .select(
+                "id,content,memory_type,image_url,location,place_name,latitude,longitude,"
+                "location_note,sentiment,timestamp"
+            )
             .eq("couple_id", user.couple_id)
-            .not_.is_("location", "null")
+            .not_.is_("latitude", "null")
             .order("timestamp", desc=True)
             .execute()
         )
-        return [LoveMapMemory(**item) for item in result.data or []]
+        return [LoveMapMemory(**self._with_signed_image_url(item)) for item in result.data or []]
+
+    def _with_signed_image_url(self, memory: dict[str, Any]) -> dict[str, Any]:
+        image_path = memory.get("image_url")
+        memory["image_signed_url"] = None
+        if not image_path:
+            return memory
+        signed = supabase.storage.from_(settings.supabase_memory_bucket).create_signed_url(image_path, 3600)
+        memory["image_signed_url"] = signed.get("signedURL") or signed.get("signedUrl")
+        return memory
 
     def _insert_row(self, table: str, row: dict[str, Any]) -> dict[str, Any]:
         result = supabase.table(table).insert(row).execute()

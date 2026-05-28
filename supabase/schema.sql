@@ -33,9 +33,14 @@ create table if not exists public.memories (
   id uuid primary key default gen_random_uuid(),
   couple_id uuid not null references public.couples(id) on delete cascade,
   content text,
+  memory_type text not null default 'memory',
   image_url text,
   vector_embedding vector(1536),
   location text,
+  place_name text,
+  latitude double precision,
+  longitude double precision,
+  location_note text,
   sentiment text,
   timestamp timestamptz not null default now(),
   search_tsv tsvector generated always as (
@@ -43,6 +48,12 @@ create table if not exists public.memories (
   ) stored,
   created_at timestamptz not null default now()
 );
+
+alter table public.memories add column if not exists memory_type text not null default 'memory';
+alter table public.memories add column if not exists place_name text;
+alter table public.memories add column if not exists latitude double precision;
+alter table public.memories add column if not exists longitude double precision;
+alter table public.memories add column if not exists location_note text;
 
 create table if not exists public.preferences (
   id uuid primary key default gen_random_uuid(),
@@ -84,6 +95,9 @@ create index if not exists idx_profiles_couple_id on public.profiles(couple_id);
 create index if not exists idx_couple_invites_code on public.couple_invites(code);
 create index if not exists idx_couple_invites_couple_id on public.couple_invites(couple_id);
 create index if not exists idx_memories_couple_id on public.memories(couple_id);
+create index if not exists idx_memories_couple_type on public.memories(couple_id, memory_type);
+create index if not exists idx_memories_coordinates on public.memories(couple_id, latitude, longitude)
+where latitude is not null and longitude is not null;
 create index if not exists idx_preferences_couple_id on public.preferences(couple_id);
 create index if not exists idx_wishlist_items_couple_id on public.wishlist_items(couple_id);
 create index if not exists idx_wishlist_items_status on public.wishlist_items(status);
@@ -105,6 +119,11 @@ returns table (
   content text,
   image_url text,
   location text,
+  memory_type text,
+  place_name text,
+  latitude double precision,
+  longitude double precision,
+  location_note text,
   sentiment text,
   memory_timestamp timestamptz,
   similarity double precision
@@ -118,6 +137,11 @@ as $$
       m.content,
       m.image_url,
       m.location,
+      m.memory_type,
+      m.place_name,
+      m.latitude,
+      m.longitude,
+      m.location_note,
       m.sentiment,
       m."timestamp" as memory_timestamp,
       1 - (m.vector_embedding <=> query_embedding) as vector_score,
@@ -131,6 +155,11 @@ as $$
     scored.content,
     scored.image_url,
     scored.location,
+    scored.memory_type,
+    scored.place_name,
+    scored.latitude,
+    scored.longitude,
+    scored.location_note,
     scored.sentiment,
     scored.memory_timestamp,
     (0.78 * scored.vector_score + 0.22 * scored.text_score) as similarity

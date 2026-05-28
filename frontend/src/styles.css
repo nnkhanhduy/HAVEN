@@ -791,6 +791,107 @@ h3 {
   gap: 12px;
 }
 
+.map-shell {
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(225, 215, 202, 0.88);
+  border-radius: 8px;
+  box-shadow: 0 18px 50px rgba(68, 52, 36, 0.08);
+  display: grid;
+  gap: 12px;
+  overflow: hidden;
+  padding: 14px;
+}
+
+.map-toolbar {
+  align-items: center;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+}
+
+.map-toolbar div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.map-toolbar span,
+.inline-warning,
+.coordinate-row span {
+  color: #756d64;
+  font-size: 13px;
+}
+
+.leaflet-map {
+  border-radius: 8px;
+  min-height: 460px;
+  overflow: hidden;
+  width: 100%;
+}
+
+.haven-map-marker {
+  align-items: center;
+  background: rgba(213, 111, 77, 0.18);
+  border-radius: 999px;
+  display: flex;
+  justify-content: center;
+}
+
+.haven-map-marker span {
+  background: #d56f4d;
+  border: 3px solid #fff;
+  border-radius: 999px;
+  box-shadow: 0 10px 20px rgba(68, 52, 36, 0.22);
+  display: block;
+  height: 18px;
+  width: 18px;
+}
+
+.map-popup {
+  display: grid;
+  gap: 6px;
+  max-width: 230px;
+}
+
+.map-popup img,
+.location-card img {
+  aspect-ratio: 16 / 10;
+  border-radius: 7px;
+  object-fit: cover;
+  width: 100%;
+}
+
+.map-popup span {
+  color: #756d64;
+  font-size: 12px;
+}
+
+.map-popup p {
+  color: #3f3933;
+  line-height: 1.4;
+  margin: 0;
+}
+
+.inline-warning {
+  background: #fff8e8;
+  border: 1px solid #ead8a6;
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.coordinate-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.coordinate-row span {
+  background: #f5efe7;
+  border: 1px solid #e1d7ca;
+  border-radius: 999px;
+  font-weight: 800;
+  padding: 6px 10px;
+}
+
 .location-card {
   align-items: start;
   display: grid;
@@ -999,6 +1100,7 @@ h3 {
 
   .hero-panel,
   .section-title-block,
+  .map-toolbar,
   .upload-row,
   .info-row,
   .header-actions {
@@ -1012,8 +1114,13 @@ h3 {
 
   .button-row button,
   .hero-panel button,
+  .map-toolbar button,
   .upload-row button {
     width: 100%;
+  }
+
+  .leaflet-map {
+    min-height: 360px;
   }
 
   .info-row strong {

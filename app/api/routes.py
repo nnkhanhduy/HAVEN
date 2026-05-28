@@ -73,7 +73,12 @@ async def list_memories(
 @router.post("/memories", response_model=MemoryCreateResponse)
 async def create_memory(
     content: str = Form(default=""),
+    memory_type: str = Form(default="memory"),
     location: str | None = Form(default=None),
+    place_name: str | None = Form(default=None),
+    latitude: float | None = Form(default=None),
+    longitude: float | None = Form(default=None),
+    location_note: str | None = Form(default=None),
     occurred_at: str | None = Form(default=None),
     image: UploadFile | None = File(default=None),
     current_user: CurrentUser = Depends(get_current_user),
@@ -81,7 +86,12 @@ async def create_memory(
     memory = await memory_engine.create_memory(
         user=current_user,
         content=content,
+        memory_type=memory_type,
         location=location,
+        place_name=place_name,
+        latitude=latitude,
+        longitude=longitude,
+        location_note=location_note,
         occurred_at=occurred_at,
         image=image,
     )

@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 import {
   CalendarDays,
   Check,
@@ -13,6 +15,7 @@ import {
   Pencil,
   Plus,
   RefreshCw,
+  LocateFixed,
   Send,
   Share2,
   Settings,
@@ -1145,40 +1148,281 @@ function Wiki({
 
 function LoveMap({ session, showError }: { session: Session; showError: (error: unknown) => void }) {
   const [items, setItems] = useState<Memory[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [checkInOpen, setCheckInOpen] = useState(false);
+  const [draftCoords, setDraftCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [geoNotice, setGeoNotice] = useState<string | null>(null);
+  const mapRef = useRef<HTMLDivElement | null>(null);
+  const mapInstanceRef = useRef<L.Map | null>(null);
+  const markerLayerRef = useRef<L.LayerGroup | null>(null);
 
   useEffect(() => {
-    apiRequest<Memory[]>(session, "/api/love-map").then(setItems).catch(showError);
+    loadMapItems();
+  }, [session.access_token]);
+
+  useEffect(() => {
+    if (!mapRef.current || mapInstanceRef.current) return;
+    const map = L.map(mapRef.current, { scrollWheelZoom: true }).setView([13.7563, 100.5018], 11);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      maxZoom: 19,
+    }).addTo(map);
+    const markerLayer = L.layerGroup().addTo(map);
+    mapInstanceRef.current = map;
+    markerLayerRef.current = markerLayer;
+    return () => {
+      map.remove();
+      mapInstanceRef.current = null;
+      markerLayerRef.current = null;
+    };
   }, []);
 
-  const grouped = items.reduce<Record<string, Memory[]>>((acc, item) => {
-    const key = item.location || "Unknown place";
-    acc[key] = [...(acc[key] || []), item];
-    return acc;
-  }, {});
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    const markerLayer = markerLayerRef.current;
+    if (!map || !markerLayer) return;
+    markerLayer.clearLayers();
+    const pinned = items.filter(hasCoordinates);
+    const bounds = L.latLngBounds([]);
+    pinned.forEach((item) => {
+      const marker = L.marker([item.latitude!, item.longitude!], {
+        icon: L.divIcon({
+          className: "haven-map-marker",
+          html: '<span></span>',
+          iconSize: [28, 28],
+          iconAnchor: [14, 14],
+        }),
+      });
+      marker.bindPopup(renderMarkerPopup(item));
+      marker.addTo(markerLayer);
+      bounds.extend([item.latitude!, item.longitude!]);
+    });
+    if (pinned.length) {
+      map.fitBounds(bounds, { padding: [38, 38], maxZoom: 15 });
+    }
+  }, [items]);
+
+  async function loadMapItems() {
+    setLoading(true);
+    try {
+      setItems(await apiRequest<Memory[]>(session, "/api/love-map"));
+    } catch (error) {
+      showError(error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function startCheckIn() {
+    setGeoNotice(null);
+    if (!navigator.geolocation) {
+      setDraftCoords(null);
+      setGeoNotice("Location is not available in this browser. You can still save a memory without a pin.");
+      setCheckInOpen(true);
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setDraftCoords({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        });
+        setCheckInOpen(true);
+      },
+      () => {
+        setDraftCoords(null);
+        setGeoNotice("Location permission was not granted. You can still save the memory, but it will not have a map pin.");
+        setCheckInOpen(true);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
+    );
+  }
+
+  const pinnedItems = items.filter(hasCoordinates);
+  const unpinnedItems = items.filter((item) => !hasCoordinates(item));
 
   return (
     <div className="view-stack">
       <SectionTitle title="Love Map" subtitle="Places that hold parts of your story." icon={MapPin} />
-      <div className="map-board">
-        {Object.entries(grouped).length ? (
-          Object.entries(grouped).map(([location, memories]) => (
-            <article className="location-card" key={location}>
+      <section className="map-shell">
+        <div className="map-toolbar">
+          <div>
+            <strong>{pinnedItems.length} pinned places</strong>
+            <span>{loading ? "Loading map memories..." : "OpenStreetMap, free-first check-ins"}</span>
+          </div>
+          <div className="button-row">
+            <button className="secondary" onClick={loadMapItems} type="button">
+              <RefreshCw size={17} />
+              Refresh
+            </button>
+            <button onClick={startCheckIn} type="button">
+              <LocateFixed size={17} />
+              Check in
+            </button>
+          </div>
+        </div>
+        <div className="leaflet-map" ref={mapRef} />
+      </section>
+
+      {loading ? <SkeletonRows /> : null}
+      {!loading && !items.length ? (
+        <EmptyState title="No places yet" text="Check in from the map to save a place, note, and optional photo." />
+      ) : null}
+
+      {pinnedItems.length ? (
+        <div className="map-board">
+          {pinnedItems.map((memory) => (
+            <article className="location-card" key={memory.id}>
               <MapPin size={20} />
               <div>
-                <h2>{location}</h2>
-                <span>{memories.length} memories</span>
-                {memories.slice(0, 2).map((memory) => (
-                  <p key={memory.id}>{memory.content}</p>
-                ))}
+                <h2>{memory.place_name || memory.location || "Saved place"}</h2>
+                <span>{memory.timestamp ? formatDate(memory.timestamp) : "Check-in"}</span>
+                {memory.image_signed_url ? <img alt="" src={memory.image_signed_url} /> : null}
+                <p>{memory.content || memory.location_note || "A saved place in your story."}</p>
               </div>
             </article>
-          ))
-        ) : (
-          <EmptyState title="No places yet" text="Add a memory with a location to start your love map." />
-        )}
-      </div>
+          ))}
+        </div>
+      ) : null}
+
+      {unpinnedItems.length ? (
+        <section className="surface">
+          <SectionHeader title="Places without pin" />
+          {unpinnedItems.map((memory) => (
+            <MemoryMini key={memory.id} memory={memory} />
+          ))}
+        </section>
+      ) : null}
+
+      {checkInOpen ? (
+        <CheckInModal
+          coords={draftCoords}
+          geoNotice={geoNotice}
+          onClose={() => setCheckInOpen(false)}
+          onSaved={async () => {
+            setCheckInOpen(false);
+            await loadMapItems();
+          }}
+          session={session}
+          showError={showError}
+        />
+      ) : null}
     </div>
   );
+}
+
+function CheckInModal({
+  coords,
+  geoNotice,
+  onClose,
+  onSaved,
+  session,
+  showError,
+}: {
+  coords: { latitude: number; longitude: number } | null;
+  geoNotice: string | null;
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+  session: Session;
+  showError: (error: unknown) => void;
+}) {
+  const [placeName, setPlaceName] = useState("");
+  const [content, setContent] = useState("");
+  const [locationNote, setLocationNote] = useState("");
+  const [image, setImage] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+
+  async function saveCheckIn() {
+    setBusy(true);
+    try {
+      const form = new FormData();
+      form.append("memory_type", "check_in");
+      form.append("content", content);
+      if (placeName.trim()) {
+        form.append("place_name", placeName.trim());
+        form.append("location", placeName.trim());
+      }
+      if (locationNote.trim()) form.append("location_note", locationNote.trim());
+      if (coords) {
+        form.append("latitude", String(coords.latitude));
+        form.append("longitude", String(coords.longitude));
+      }
+      if (image) form.append("image", image);
+      await apiFormRequest(session, "/api/memories", form);
+      await onSaved();
+    } catch (error) {
+      showError(error);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal title="Check in" onClose={onClose}>
+      {geoNotice ? <p className="inline-warning">{geoNotice}</p> : null}
+      <label>
+        Place name
+        <input value={placeName} onChange={(event) => setPlaceName(event.target.value)} placeholder="Cafe, beach, home..." />
+      </label>
+      <label>
+        Memory
+        <textarea value={content} onChange={(event) => setContent(event.target.value)} placeholder="What do you want to remember here?" />
+      </label>
+      <label>
+        Location note
+        <input value={locationNote} onChange={(event) => setLocationNote(event.target.value)} placeholder="Table by the window, sunset view..." />
+      </label>
+      {coords ? (
+        <div className="coordinate-row">
+          <span>{coords.latitude.toFixed(5)}</span>
+          <span>{coords.longitude.toFixed(5)}</span>
+        </div>
+      ) : null}
+      <div className="upload-row">
+        <button className="secondary" onClick={() => fileRef.current?.click()} type="button">
+          <Upload size={17} />
+          {image ? image.name : "Add photo"}
+        </button>
+        <input
+          ref={fileRef}
+          hidden
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          onChange={(event) => setImage(event.target.files?.[0] ?? null)}
+        />
+        <button disabled={busy || (!content.trim() && !image && !placeName.trim())} onClick={saveCheckIn} type="button">
+          <Check size={17} />
+          {busy ? "Saving..." : "Save check-in"}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+function hasCoordinates(memory: Memory): boolean {
+  return typeof memory.latitude === "number" && typeof memory.longitude === "number";
+}
+
+function renderMarkerPopup(memory: Memory): string {
+  const title = escapeHtml(memory.place_name || memory.location || "Saved place");
+  const body = escapeHtml(memory.content || memory.location_note || "A saved Haven check-in.");
+  const when = memory.timestamp ? escapeHtml(formatDate(memory.timestamp)) : "Check-in";
+  const image = memory.image_signed_url ? `<img src="${escapeHtml(memory.image_signed_url)}" alt="" />` : "";
+  return `<article class="map-popup">${image}<strong>${title}</strong><span>${when}</span><p>${body}</p></article>`;
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (char) => {
+    const entities: Record<string, string> = {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#039;",
+    };
+    return entities[char];
+  });
 }
 
 function ApiStatusPanel({ compact = false }: { compact?: boolean }) {

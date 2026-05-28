@@ -90,6 +90,28 @@ VITE_API_BASE_URL=https://your-render-api.onrender.com
 
 After the Vercel URL is known, add it to Render `CORS_ORIGINS` and redeploy the API.
 
+## Production Launch Checklist
+
+Before inviting real users, verify the live Render and Vercel deployments end to end:
+
+- Render `/health` returns `ok` and `/ready` returns `ready`.
+- Render `CORS_ORIGINS` contains only the production Vercel domain, any staging/preview domain you actively use, and local origins for development.
+- Vercel `VITE_API_BASE_URL` points to the Render API, not localhost.
+- Vercel `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` point to the production Supabase project.
+- Supabase Storage bucket `memories` is private.
+- Supabase RLS is enabled on all user-data tables after running `supabase/schema.sql`.
+- A real smoke test can sign in, create or join a Haven, save a memory, save a check-in, upload an image, and see the map marker after refresh.
+- The app Settings screen shows the expected frontend version and API URL.
+- Rollback is documented: redeploy the previous successful Vercel deployment and manually deploy the previous Render commit or image.
+
+## Free Map Check-ins
+
+Haven uses Leaflet with OpenStreetMap tiles for the Love Map, so no Google Maps billing account or API key is required.
+
+Check-ins are stored as memories with `memory_type=check_in`, optional image uploads in the private `memories` bucket, and optional GPS coordinates from the browser Geolocation API. Users must explicitly tap **Check in** before the browser asks for location permission. If they deny permission, they can still save a memory without a map pin.
+
+When applying this schema to an existing Supabase project, run the latest `supabase/schema.sql`; it includes `alter table ... add column if not exists` statements for the new check-in fields.
+
 If the production site still shows an older UI after a push to `main`, check **Vercel > Project > Deployments** and confirm the newest deployment uses the latest commit. The app also shows the frontend build version in **Settings** so you can compare it with the Git commit shown in Vercel. If needed, use **Redeploy** on the latest deployment.
 
 Backend API changes require Render to run the latest commit too. With Blueprint auto deploy enabled this should happen automatically; otherwise use **Render > haven-api > Manual Deploy > Deploy latest commit**.

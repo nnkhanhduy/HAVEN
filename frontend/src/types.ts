@@ -8,9 +8,14 @@ export type Profile = {
 export type Memory = {
   id: string;
   content?: string | null;
+  memory_type?: "memory" | "check_in";
   image_url?: string | null;
   image_signed_url?: string | null;
   location?: string | null;
+  place_name?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  location_note?: string | null;
   sentiment?: string | null;
   timestamp?: string | null;
   created_at?: string | null;

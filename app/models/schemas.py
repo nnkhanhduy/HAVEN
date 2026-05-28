@@ -1,6 +1,38 @@
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+
+MEMORY_TYPES = {"memory", "check_in"}
+
+
+class PlaceMixin(BaseModel):
+    memory_type: str = Field(default="memory", max_length=40)
+    place_name: str | None = Field(default=None, max_length=180)
+    latitude: float | None = None
+    longitude: float | None = None
+    location_note: str | None = Field(default=None, max_length=500)
+
+    @field_validator("memory_type")
+    @classmethod
+    def validate_memory_type(cls, value: str | None) -> str | None:
+        if value is not None and value not in MEMORY_TYPES:
+            raise ValueError("memory_type must be memory or check_in")
+        return value
+
+    @field_validator("latitude")
+    @classmethod
+    def validate_latitude(cls, value: float | None) -> float | None:
+        if value is not None and not -90 <= value <= 90:
+            raise ValueError("latitude must be between -90 and 90")
+        return value
+
+    @field_validator("longitude")
+    @classmethod
+    def validate_longitude(cls, value: float | None) -> float | None:
+        if value is not None and not -180 <= value <= 180:
+            raise ValueError("longitude must be between -180 and 180")
+        return value
 
 
 class ProfileResponse(BaseModel):
@@ -110,23 +142,25 @@ class ImportantDateResponse(BaseModel):
     updated_at: str | None = None
 
 
-class LoveMapMemory(BaseModel):
+class LoveMapMemory(PlaceMixin):
     id: str
     content: str | None = None
     image_url: str | None = None
-    location: str
+    image_signed_url: str | None = None
+    location: str | None = None
     sentiment: str | None = None
     timestamp: str | None = None
 
 
-class MemoryUpdate(BaseModel):
+class MemoryUpdate(PlaceMixin):
+    memory_type: str | None = Field(default=None, max_length=40)
     content: str | None = None
     location: str | None = None
     occurred_at: str | None = None
     sentiment: str | None = None
 
 
-class MemoryResponse(BaseModel):
+class MemoryResponse(PlaceMixin):
     id: str
     content: str | None = None
     image_url: str | None = None
@@ -147,6 +181,11 @@ class RetrievedMemory(BaseModel):
     content: str | None = None
     image_url: str | None = None
     location: str | None = None
+    memory_type: str = "memory"
+    place_name: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    location_note: str | None = None
     sentiment: str | None = None
     timestamp: str | None = None
     similarity: float | None = None
