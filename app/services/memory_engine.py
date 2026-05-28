@@ -1,4 +1,3 @@
-import base64
 import json
 from datetime import UTC, datetime
 from typing import Any
@@ -32,21 +31,18 @@ class MemoryEngine:
     ) -> dict[str, Any]:
         self._validate_place(memory_type, latitude, longitude)
         image_url = None
-        image_caption = None
         raw_image_bytes = None
 
         if image:
             raw_image_bytes = await image.read()
             self._validate_image(image, raw_image_bytes)
             image_url = self._upload_image(user.couple_id, image, raw_image_bytes)
-            image_caption = await self._describe_image(image, raw_image_bytes)
 
         normalized_content = "\n\n".join(
             part
             for part in [
                 content.strip(),
                 self._check_in_block(memory_type, place_name, location_note),
-                self._caption_block(image_caption),
             ]
             if part
         )
@@ -224,34 +220,6 @@ class MemoryEngine:
             rationale=payload.get("rationale", ""),
         )
 
-    async def _describe_image(self, image: UploadFile, image_bytes: bytes) -> str:
-        content_type = image.content_type or "image/jpeg"
-        encoded = base64.b64encode(image_bytes).decode("ascii")
-        response = await self.client.chat.completions.create(
-            model=settings.openai_vision_model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "Extract useful memory details from the image. Include visible text, "
-                        "people, activities, objects, mood, possible location clues, and date clues."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": "Describe this couple memory for retrieval."},
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": f"data:{content_type};base64,{encoded}"},
-                        },
-                    ],
-                },
-            ],
-            temperature=0.2,
-        )
-        return response.choices[0].message.content or ""
-
     async def _extract_metadata(self, content: str) -> dict[str, Any]:
         response = await self.client.chat.completions.create(
             model=settings.openai_chat_model,
@@ -348,11 +316,6 @@ class MemoryEngine:
             .execute()
         )
         return result.data or []
-
-    def _caption_block(self, image_caption: str | None) -> str | None:
-        if not image_caption:
-            return None
-        return f"Image analysis:\n{image_caption}"
 
     def _check_in_block(self, memory_type: str, place_name: str | None, location_note: str | None) -> str | None:
         if memory_type != "check_in":

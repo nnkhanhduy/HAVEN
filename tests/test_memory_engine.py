@@ -19,18 +19,6 @@ class FakeSupabase:
     storage = FakeStorage()
 
 
-def test_caption_block_returns_none_without_caption():
-    engine = MemoryEngine()
-
-    assert engine._caption_block(None) is None
-
-
-def test_caption_block_formats_caption():
-    engine = MemoryEngine()
-
-    assert engine._caption_block("A happy dinner") == "Image analysis:\nA happy dinner"
-
-
 def test_check_in_block_formats_place_and_note():
     engine = MemoryEngine()
 

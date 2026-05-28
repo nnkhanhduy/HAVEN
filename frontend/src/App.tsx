@@ -587,6 +587,8 @@ function Memories({
   const [image, setImage] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [editing, setEditing] = useState<Memory | null>(null);
+  const [selectedPhoto, setSelectedPhoto] = useState<Memory | null>(null);
+  const [memoryView, setMemoryView] = useState<"diary" | "photos">("diary");
   const [busy, setBusy] = useState(false);
   const [loadingList, setLoadingList] = useState(true);
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -675,13 +677,16 @@ function Memories({
     }
   }
 
+  const photoMemories = memories.filter((memory) => memory.image_signed_url);
+  const diaryGroups = groupMemoriesByDate(memories);
+
   return (
     <div className="view-stack">
-      <SectionTitle title="Memories" subtitle="Capture photos, places, and the details that usually disappear." icon={Heart} />
-      <section className="composer">
+      <SectionTitle title="Memories" subtitle="A shared diary for notes, photos, and the little pieces of your days." icon={Heart} />
+      <section className="composer diary-composer">
         <label className="wide">
-          Memory
-          <textarea value={content} onChange={(event) => setContent(event.target.value)} placeholder="What happened today?" />
+          Diary note
+          <textarea value={content} onChange={(event) => setContent(event.target.value)} placeholder="Write the note you want to remember with this moment." />
         </label>
         <div className="composer-row">
           <label>
@@ -708,46 +713,82 @@ function Memories({
           {previewUrl ? <img className="image-preview" alt="" src={previewUrl} /> : null}
           <button disabled={busy || (!content.trim() && !image)} onClick={createMemory} type="button">
             <Plus size={18} />
-            {busy ? "Saving..." : "Save memory"}
+            {busy ? "Saving..." : "Save diary entry"}
           </button>
         </div>
       </section>
 
       <section className="memory-board">
-        <SectionHeader title="All memories" actionLabel="Refresh" onAction={loadMemories} />
+        <div className="section-header">
+          <div className="segmented-control">
+            <button className={memoryView === "diary" ? "active" : ""} onClick={() => setMemoryView("diary")} type="button">
+              Diary
+            </button>
+            <button className={memoryView === "photos" ? "active" : ""} onClick={() => setMemoryView("photos")} type="button">
+              Photos
+            </button>
+          </div>
+          <button className="text-button" onClick={loadMemories} type="button">
+            Refresh
+          </button>
+        </div>
         {loadingList ? (
           <SkeletonRows />
-        ) : memories.length ? (
-          <div className="memory-grid">
-            {memories.map((memory) => (
-              <article className="memory-card" key={memory.id}>
-                {memory.image_signed_url ? <img alt="" src={memory.image_signed_url} /> : null}
-                <p>{memory.content || "Image memory"}</p>
-                <div className="meta">
-                  {memory.location ? <span>{memory.location}</span> : null}
-                  {memory.sentiment ? <span>{memory.sentiment}</span> : null}
-                  {memory.timestamp ? <span>{formatDate(memory.timestamp)}</span> : null}
+        ) : memoryView === "diary" && memories.length ? (
+          <div className="diary-book">
+            {diaryGroups.map(([dateLabel, group]) => (
+              <section className="diary-day" key={dateLabel}>
+                <div className="diary-date">{dateLabel}</div>
+                <div className="diary-entries">
+                  {group.map((memory) => (
+                    <article className={memory.image_signed_url ? "diary-entry with-photo" : "diary-entry"} key={memory.id}>
+                      {memory.image_signed_url ? (
+                        <button className="diary-photo-button" onClick={() => setSelectedPhoto(memory)} type="button">
+                          <img alt="" src={memory.image_signed_url} />
+                        </button>
+                      ) : null}
+                      <div className="diary-entry-body">
+                        <p>{memory.content || "Photo memory"}</p>
+                        <div className="meta">
+                          {memory.location ? <span>{memory.location}</span> : null}
+                          {memory.timestamp ? <span>{formatDate(memory.timestamp)}</span> : null}
+                        </div>
+                        <div className="card-actions">
+                          <button className="icon-only ghost" onClick={() => setEditing(memory)} title="Edit diary entry" type="button">
+                            <Pencil size={16} />
+                          </button>
+                          <button className="icon-only danger" disabled={busy} onClick={() => deleteMemory(memory.id)} title="Delete diary entry" type="button">
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    </article>
+                  ))}
                 </div>
-                <div className="card-actions">
-                  <button className="icon-only ghost" onClick={() => setEditing(memory)} title="Edit memory" type="button">
-                    <Pencil size={16} />
-                  </button>
-                  <button className="icon-only danger" disabled={busy} onClick={() => deleteMemory(memory.id)} title="Delete memory" type="button">
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-              </article>
+              </section>
+            ))}
+          </div>
+        ) : memoryView === "photos" && photoMemories.length ? (
+          <div className="photo-library">
+            {photoMemories.map((memory) => (
+              <button className="photo-tile" key={memory.id} onClick={() => setSelectedPhoto(memory)} type="button">
+                <img alt="" src={memory.image_signed_url || ""} />
+                <span>{memory.location || formatDate(memory.timestamp || memory.created_at || "")}</span>
+              </button>
             ))}
           </div>
         ) : (
-          <EmptyState title="No memories yet" text="Add a note or photo to start your shared archive." />
+          <EmptyState
+            title={memoryView === "photos" ? "No photos yet" : "No diary entries yet"}
+            text={memoryView === "photos" ? "Add a photo to a diary entry and it will appear here." : "Write a note or attach a photo to start your shared diary."}
+          />
         )}
       </section>
 
       {editing ? (
         <Modal title="Edit memory" onClose={() => setEditing(null)}>
           <label>
-            Memory
+            Diary note
             <textarea value={editing.content ?? ""} onChange={(event) => setEditing({ ...editing, content: event.target.value })} />
           </label>
           <label>
@@ -765,6 +806,27 @@ function Memories({
             </button>
             <button className="secondary" onClick={() => setEditing(null)} type="button">
               Cancel
+            </button>
+          </div>
+        </Modal>
+      ) : null}
+
+      {selectedPhoto ? (
+        <Modal title={selectedPhoto.location || "Photo memory"} onClose={() => setSelectedPhoto(null)}>
+          {selectedPhoto.image_signed_url ? <img className="photo-viewer-image" alt="" src={selectedPhoto.image_signed_url} /> : null}
+          <p className="photo-caption">{selectedPhoto.content || "No note yet"}</p>
+          <div className="meta">
+            {selectedPhoto.location ? <span>{selectedPhoto.location}</span> : null}
+            {selectedPhoto.timestamp ? <span>{formatDate(selectedPhoto.timestamp)}</span> : null}
+          </div>
+          <div className="button-row">
+            <button className="secondary" onClick={() => setEditing(selectedPhoto)} type="button">
+              <Pencil size={17} />
+              Edit note
+            </button>
+            <button className="danger" disabled={busy} onClick={() => deleteMemory(selectedPhoto.id)} type="button">
+              <Trash2 size={17} />
+              Delete
             </button>
           </div>
         </Modal>
@@ -1750,6 +1812,15 @@ function splitList(value: string): string[] {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function groupMemoriesByDate(memories: Memory[]): [string, Memory[]][] {
+  const grouped = memories.reduce<Record<string, Memory[]>>((acc, memory) => {
+    const label = formatDate(memory.timestamp || memory.created_at || new Date().toISOString());
+    acc[label] = [...(acc[label] || []), memory];
+    return acc;
+  }, {});
+  return Object.entries(grouped);
 }
 
 function formatPreference(value: Record<string, unknown>): string {
