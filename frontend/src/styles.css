@@ -1059,6 +1059,10 @@ h3 {
     z-index: 20;
   }
 
+  .notice {
+    bottom: 92px;
+  }
+
   .bottom-nav button {
     background: transparent;
     border-color: transparent;
