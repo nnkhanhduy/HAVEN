@@ -108,6 +108,8 @@ create index if not exists idx_memories_embedding on public.memories
 using ivfflat (vector_embedding vector_cosine_ops)
 with (lists = 100);
 
+drop function if exists public.match_memories(vector, text, uuid, integer);
+
 create or replace function public.match_memories(
   query_embedding vector(1536),
   query_text text,
