@@ -410,45 +410,27 @@ function Workspace({
 
   return (
     <section className="workspace-shell">
-      <aside className="sidebar">
-        <div className="sidebar-brand">
-          <span className="brand-mark">
-            <Heart size={22} />
-          </span>
-          <div>
-            <strong>Haven</strong>
-            <span>{profile.display_name || "Partner"}</span>
-          </div>
-        </div>
-        <button className="invite-button" onClick={createInvite} type="button">
-          <Plus size={17} />
-          Invite partner
-        </button>
-        {inviteCode ? <div className="invite-code">Code {inviteCode}</div> : null}
-        <nav className="side-nav">
-          {tabs.map((item) => {
-            const Icon = item.icon;
-            return (
-              <button className={tab === item.id ? "active" : ""} key={item.id} onClick={() => setTab(item.id)} type="button">
-                <Icon size={18} />
-                {item.label}
-              </button>
-            );
-          })}
-        </nav>
-      </aside>
-
-      <div className="mobile-topbar">
+      <header className="workspace-topbar">
         <div className="brand-lockup">
           <span className="brand-mark">
-            <Heart size={21} />
+            <Heart size={20} />
           </span>
           <span>Haven</span>
         </div>
-        <button className="icon-only ghost" onClick={createInvite} title="Invite partner" type="button">
-          <Plus size={18} />
-        </button>
-      </div>
+        <div className="topbar-actions">
+          <button className="icon-only ghost" onClick={createInvite} title="Invite partner" type="button">
+            <Plus size={18} />
+          </button>
+          <button
+            className={`icon-only ghost${tab === "settings" ? " active-tab" : ""}`}
+            onClick={() => setTab("settings")}
+            title="Settings"
+            type="button"
+          >
+            <Settings size={18} />
+          </button>
+        </div>
+      </header>
 
       <section className="content-panel">
         <div key={tab} className="tab-view page-enter">
@@ -468,7 +450,7 @@ function Workspace({
           const Icon = item.icon;
           return (
             <button className={tab === item.id ? "active" : ""} key={item.id} onClick={() => setTab(item.id)} type="button">
-              <Icon size={18} />
+              <Icon size={20} />
               <span>{item.label}</span>
             </button>
           );
