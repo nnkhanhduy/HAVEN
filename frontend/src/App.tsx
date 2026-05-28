@@ -38,8 +38,8 @@ type CreateCoupleResult = {
 const tabs = [
   { id: "today" as const, label: "Today", icon: Sparkles },
   { id: "memories" as const, label: "Memories", icon: Heart },
-  { id: "ask" as const, label: "Ask", icon: MessageCircle },
-  { id: "wiki" as const, label: "Wiki", icon: Gift },
+  { id: "ask" as const, label: "Coach", icon: MessageCircle },
+  { id: "wiki" as const, label: "Profile", icon: Gift },
   { id: "map" as const, label: "Map", icon: MapPin },
   { id: "settings" as const, label: "Settings", icon: Settings },
 ];
@@ -849,7 +849,11 @@ function AskAi({ session, showError }: { session: Session; showError: (error: un
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState<AskResponse | null>(null);
   const [busy, setBusy] = useState(false);
-  const suggestions = ["What places do we love?", "What gift ideas fit us?", "What did we enjoy recently?"];
+  const suggestions = [
+    "What should we do together this weekend?",
+    "What gift would feel personal based on what we saved?",
+    "Give us advice based on our recent diary entries.",
+  ];
 
   async function ask(nextQuestion = question) {
     setQuestion(nextQuestion);
@@ -866,11 +870,11 @@ function AskAi({ session, showError }: { session: Session; showError: (error: un
 
   return (
     <div className="view-stack">
-      <SectionTitle title="Soulmate AI" subtitle="Ask from your shared memories, preferences, and moments." icon={Sparkles} />
+      <SectionTitle title="Relationship Coach" subtitle="Advice and suggestions based on your diary, profile, places, ideas, and important dates." icon={Sparkles} />
       <section className="chat-panel">
         <label>
-          Question
-          <textarea value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Ask something about your relationship..." />
+          What would you like help with?
+          <textarea value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Ask for advice, date ideas, gift suggestions, or a gentle read on your recent moments." />
         </label>
         <div className="suggestion-row">
           {suggestions.map((item) => (
@@ -881,14 +885,14 @@ function AskAi({ session, showError }: { session: Session; showError: (error: un
         </div>
         <button disabled={busy || question.length < 2} onClick={() => ask()} type="button">
           <Send size={17} />
-          {busy ? "Thinking..." : "Ask"}
+          {busy ? "Thinking..." : "Get advice"}
         </button>
       </section>
       {busy ? <SkeletonRows /> : null}
       {answer ? (
         <section className="answer-panel">
           <p>{answer.answer}</p>
-          <h3>Sources</h3>
+          <h3>Used from your diary</h3>
           <div className="source-list">
             {answer.sources.map((source) => (
               <MemoryMini key={source.id} memory={source} />
@@ -1031,13 +1035,18 @@ function Wiki({
 
   return (
     <div className="view-stack">
-      <SectionTitle title="Couple Wiki" subtitle="The details that make planning easier and more personal." icon={Gift} />
+      <SectionTitle title="Couple Profile" subtitle="The details Haven uses to understand your relationship and make better suggestions." icon={Gift} />
       {loadingWiki ? <SkeletonRows /> : null}
-      <div className="wiki-grid">
+      <div className="profile-overview">
+        <MetricCard label="Preference notes" value={String(preferences.length)} />
+        <MetricCard label="Ideas saved" value={String(wishlist.length)} />
+        <MetricCard label="Important dates" value={String(dates.length)} />
+      </div>
+      <div className="wiki-grid profile-grid">
         <section className="surface">
-          <h2>Preferences</h2>
+          <h2>Likes, Dislikes & Notes</h2>
           <label>
-            Category
+            Topic
             <input value={category} onChange={(event) => setCategory(event.target.value)} />
           </label>
           <label>
@@ -1053,7 +1062,7 @@ function Wiki({
             <textarea value={notes} onChange={(event) => setNotes(event.target.value)} />
           </label>
           <button disabled={savingWiki || !category} onClick={savePreference} type="button">
-            {savingWiki ? "Saving..." : editingPreferenceId ? "Update preference" : "Save preference"}
+            {savingWiki ? "Saving..." : editingPreferenceId ? "Update note" : "Save note"}
           </button>
           <div className="wiki-card-list">
             {preferences.length ? (
@@ -1094,9 +1103,9 @@ function Wiki({
         </section>
 
         <section className="surface">
-          <h2>Wishlist</h2>
+          <h2>Ideas & Wishlist</h2>
           <label>
-            Gift or idea
+            Idea
             <input value={wishTitle} onChange={(event) => setWishTitle(event.target.value)} />
           </label>
           <label>
@@ -1157,7 +1166,7 @@ function Wiki({
         </section>
 
         <section className="surface">
-          <h2>Important dates</h2>
+          <h2>Important Dates</h2>
           <label>
             Title
             <input value={dateTitle} onChange={(event) => setDateTitle(event.target.value)} />
@@ -1693,8 +1702,6 @@ function SettingsView({
         <InfoRow label="Display name" value={profile.display_name || "Not set"} />
         <InfoRow label="Role" value={profile.role || "member"} />
         <InfoRow label="Couple ID" value={profile.couple_id} />
-        <InfoRow label="API" value={apiBaseUrl} />
-        <InfoRow label="Frontend version" value={shortVersion(appVersion)} />
         {inviteCode ? <InfoRow label="Latest invite" value={inviteCode} /> : null}
         <div className="button-row">
           <button className="secondary" onClick={() => copyValue(profile.couple_id, "Couple ID")} type="button">

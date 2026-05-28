@@ -165,18 +165,28 @@ class MemoryEngine:
     async def answer_question(self, user: CurrentUser, question: str) -> AskResponse:
         memories = await self.retrieve_memories(user.couple_id, question)
         context = self._format_memories(memories)
+        couple_context = self._format_couple_context(user.couple_id)
         response = await self.client.chat.completions.create(
             model=settings.openai_chat_model,
             messages=[
                 {
                     "role": "system",
                     "content": (
-                        "You are Soulmate AI for one couple. Answer only from the provided "
-                        "couple-isolated memories and profile context. If the answer is not "
-                        "supported, say you do not know yet and suggest what memory to add."
+                        "You are Haven's relationship coach for one couple. Use only the provided "
+                        "couple-isolated diary memories, preferences, wishlist ideas, and important "
+                        "dates. Give warm, practical advice and suggestions grounded in that context. "
+                        "If the couple has not provided enough information, say what is missing and "
+                        "suggest what they can add to their profile or diary."
                     ),
                 },
-                {"role": "user", "content": f"Memories:\n{context}\n\nQuestion: {question}"},
+                {
+                    "role": "user",
+                    "content": (
+                        f"Couple profile:\n{couple_context}\n\n"
+                        f"Relevant diary memories:\n{context}\n\n"
+                        f"Question: {question}"
+                    ),
+                },
             ],
             temperature=0.4,
         )
@@ -316,6 +326,34 @@ class MemoryEngine:
             .execute()
         )
         return result.data or []
+
+    def _format_couple_context(self, couple_id: str) -> str:
+        preferences = self._get_preferences(couple_id)
+        wishlist = (
+            supabase.table("wishlist_items")
+            .select("title,description,category,status,metadata")
+            .eq("couple_id", couple_id)
+            .execute()
+            .data
+            or []
+        )
+        dates = (
+            supabase.table("important_dates")
+            .select("title,date_value,date_type,notes,metadata")
+            .eq("couple_id", couple_id)
+            .order("date_value")
+            .execute()
+            .data
+            or []
+        )
+        return json.dumps(
+            {
+                "preferences": preferences,
+                "ideas": wishlist,
+                "important_dates": dates,
+            },
+            ensure_ascii=True,
+        )
 
     def _check_in_block(self, memory_type: str, place_name: str | None, location_note: str | None) -> str | None:
         if memory_type != "check_in":
