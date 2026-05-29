@@ -791,6 +791,31 @@ label {
 
 .image-preview { border-radius: var(--r); height: 46px; object-fit: cover; width: 46px; }
 
+.camera-preview {
+  align-items: center;
+  background: #111;
+  border-radius: var(--r-lg);
+  display: grid;
+  min-height: 280px;
+  overflow: hidden;
+  position: relative;
+}
+.camera-preview video {
+  display: block;
+  max-height: 62vh;
+  object-fit: cover;
+  width: 100%;
+}
+.camera-preview span {
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  left: 50%;
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
 /* Segmented control — no pill */
 .segmented-control {
   background: var(--c-surface-alt);

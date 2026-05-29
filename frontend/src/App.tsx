@@ -4,6 +4,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import {
   CalendarDays,
+  Camera,
   Check,
   ChevronRight,
   Gift,
@@ -570,6 +571,7 @@ function Memories({
   const [image, setImage] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [composerOpen, setComposerOpen] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
   const [editing, setEditing] = useState<Memory | null>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<Memory | null>(null);
   const [memoryView, setMemoryView] = useState<"diary" | "photos">("diary");
@@ -789,6 +791,10 @@ function Memories({
               <Upload size={17} />
               {image ? image.name : "Add photo"}
             </button>
+            <button className="secondary" onClick={() => setCameraOpen(true)} type="button">
+              <Camera size={17} />
+              Take photo
+            </button>
             <input
               ref={fileRef}
               hidden
@@ -803,6 +809,14 @@ function Memories({
             </button>
           </div>
         </Modal>
+      ) : null}
+
+      {cameraOpen ? (
+        <CameraCaptureModal
+          onCapture={(file) => setImage(file)}
+          onClose={() => setCameraOpen(false)}
+          showError={showError}
+        />
       ) : null}
 
       {selectedPhoto ? (
@@ -1465,10 +1479,22 @@ function CheckInModal({
   const [locationNote, setLocationNote] = useState(initialMemory?.location_note || "");
   const [currentCoords, setCurrentCoords] = useState(coords);
   const [image, setImage] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [locating, setLocating] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const isEditing = Boolean(initialMemory);
+
+  useEffect(() => {
+    if (!image) {
+      setPreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(image);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [image]);
 
   function useCurrentLocation() {
     if (!navigator.geolocation) {
@@ -1572,6 +1598,10 @@ function CheckInModal({
               <Upload size={17} />
               {image ? image.name : "Add photo"}
             </button>
+            <button className="secondary" onClick={() => setCameraOpen(true)} type="button">
+              <Camera size={17} />
+              Take photo
+            </button>
             <input
               ref={fileRef}
               hidden
@@ -1579,6 +1609,7 @@ function CheckInModal({
               accept="image/jpeg,image/png,image/webp"
               onChange={(event) => setImage(event.target.files?.[0] ?? null)}
             />
+            {previewUrl ? <img className="image-preview" alt="" src={previewUrl} /> : null}
           </>
         ) : null}
         <button disabled={busy || (!content.trim() && !image && !placeName.trim())} onClick={saveCheckIn} type="button">
@@ -1586,6 +1617,13 @@ function CheckInModal({
           {busy ? "Saving..." : isEditing ? "Save changes" : "Save check-in"}
         </button>
       </div>
+      {cameraOpen ? (
+        <CameraCaptureModal
+          onCapture={(file) => setImage(file)}
+          onClose={() => setCameraOpen(false)}
+          showError={showError}
+        />
+      ) : null}
     </Modal>
   );
 }
@@ -1790,6 +1828,101 @@ function SkeletonRows() {
       <span />
       <span />
     </div>
+  );
+}
+
+function CameraCaptureModal({
+  onCapture,
+  onClose,
+  showError,
+}: {
+  onCapture: (file: File) => void;
+  onClose: () => void;
+  showError: (error: unknown) => void;
+}) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    if (!navigator.mediaDevices?.getUserMedia) {
+      showError(new Error("Camera is not available in this browser"));
+      onClose();
+      return;
+    }
+
+    navigator.mediaDevices
+      .getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false })
+      .then((stream) => {
+        if (!mounted) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+        setReady(true);
+      })
+      .catch((error) => {
+        showError(error instanceof Error ? error : new Error("Camera permission was not granted"));
+        onClose();
+      });
+
+    return () => {
+      mounted = false;
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+    };
+  }, [onClose, showError]);
+
+  function capturePhoto() {
+    const video = videoRef.current;
+    if (!video || !video.videoWidth || !video.videoHeight) {
+      showError(new Error("Camera is still starting. Please try again."));
+      return;
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const context = canvas.getContext("2d");
+    if (!context) {
+      showError(new Error("Could not capture a photo in this browser"));
+      return;
+    }
+
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          showError(new Error("Could not capture a photo"));
+          return;
+        }
+        onCapture(new File([blob], `haven-camera-${Date.now()}.jpg`, { type: "image/jpeg" }));
+        onClose();
+      },
+      "image/jpeg",
+      0.9,
+    );
+  }
+
+  return (
+    <Modal title="Take photo" onClose={onClose}>
+      <div className="camera-preview">
+        <video ref={videoRef} autoPlay muted playsInline />
+        {!ready ? <span>Starting camera...</span> : null}
+      </div>
+      <div className="button-row">
+        <button disabled={!ready} onClick={capturePhoto} type="button">
+          <Camera size={17} />
+          Capture
+        </button>
+        <button className="secondary" onClick={onClose} type="button">
+          Cancel
+        </button>
+      </div>
+    </Modal>
   );
 }
 
