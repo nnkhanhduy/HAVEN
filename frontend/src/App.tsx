@@ -119,7 +119,7 @@ function LoadingScreen({ text = "Opening your Haven" }: { text?: string }) {
   return (
     <main className="loading-screen">
       <div className="loading-mark">
-        <Heart size={28} />
+        <HavenLogo />
       </div>
       <p>{text}</p>
       <span className="version-badge">Frontend {shortVersion(appVersion)}</span>
@@ -133,6 +133,17 @@ function NoticeBanner({ notice, onClose }: { notice: NonNullable<Notice>; onClos
       <span>{notice.text}</span>
       <X size={16} />
     </button>
+  );
+}
+
+function HavenLogo() {
+  return (
+    <svg className="haven-logo" viewBox="0 0 64 64" aria-hidden="true">
+      <path className="haven-logo-shine" d="M12 16C20 7 35 5 46 12C57 19 59 36 51 47C43 58 25 59 15 49C5 39 4 25 12 16Z" />
+      <path className="haven-logo-roof" d="M18 32L32 19L46 32" />
+      <path className="haven-logo-home" d="M23 30V44H41V30" />
+      <path className="haven-logo-heart" d="M32 40C29.5 37.8 26.5 35.5 26.5 32.2C26.5 29.8 28.2 28.3 30.2 28.3C31.1 28.3 31.9 28.7 32.5 29.5C33.1 28.7 33.9 28.3 34.8 28.3C36.8 28.3 38.5 29.8 38.5 32.2C38.5 35.5 35.1 37.9 32.5 40H32Z" />
+    </svg>
   );
 }
 
@@ -189,7 +200,7 @@ function AuthPanel({
       <div className="auth-story">
         <div className="brand-lockup">
           <span className="brand-mark">
-            <Heart size={24} />
+            <HavenLogo />
           </span>
           <span>Haven</span>
         </div>
@@ -312,7 +323,7 @@ function OnboardingPanel({
       <div className="onboarding-header">
         <div className="brand-lockup">
           <span className="brand-mark">
-            <Heart size={23} />
+            <HavenLogo />
           </span>
           <span>Haven</span>
         </div>
@@ -420,7 +431,7 @@ function Workspace({
       <header className="workspace-topbar">
         <div className="brand-lockup">
           <span className="brand-mark">
-            <Heart size={20} />
+            <HavenLogo />
           </span>
           <span>Haven</span>
         </div>
