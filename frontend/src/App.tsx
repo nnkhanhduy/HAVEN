@@ -428,6 +428,27 @@ function Workspace({
 
   return (
     <section className="workspace-shell">
+      <aside className="desktop-sidebar">
+        <div className="sidebar-wordmark">
+          <strong>Haven</strong>
+          <span>{profile.anniversary_date ? `Together since ${new Date(profile.anniversary_date).getFullYear()}` : "Our Sanctuary"}</span>
+        </div>
+        <nav className="side-nav">
+          {tabs.map((item) => {
+            const Icon = item.icon;
+            return (
+              <button className={tab === item.id ? "active" : ""} key={item.id} onClick={() => setTab(item.id)} type="button">
+                <Icon size={20} />
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+        <button className="sidebar-coach-button" onClick={() => setCoachOpen(true)} type="button">
+          <MessageCircle size={18} />
+          Ask Thối
+        </button>
+      </aside>
       <header className="workspace-topbar">
         <div className="brand-lockup">
           <span className="brand-mark">
@@ -463,7 +484,7 @@ function Workspace({
       </section>
 
       <nav className="bottom-nav">
-        {tabs.slice(0, 5).map((item) => {
+        {tabs.slice(0, 4).map((item) => {
           const Icon = item.icon;
           return (
             <button className={tab === item.id ? "active" : ""} key={item.id} onClick={() => setTab(item.id)} type="button">
