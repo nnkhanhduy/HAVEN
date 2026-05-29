@@ -17,6 +17,7 @@ import {
   Plus,
   RefreshCw,
   LocateFixed,
+  Search,
   Send,
   Share2,
   Settings,
@@ -614,7 +615,8 @@ function Memories({
   const [cameraOpen, setCameraOpen] = useState(false);
   const [editing, setEditing] = useState<Memory | null>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<Memory | null>(null);
-  const [memoryView, setMemoryView] = useState<"diary" | "photos">("diary");
+  const [memoryView, setMemoryView] = useState<"all" | "locations" | "gallery" | "musings">("all");
+  const [memorySearch, setMemorySearch] = useState("");
   const [busy, setBusy] = useState(false);
   const [loadingList, setLoadingList] = useState(true);
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -702,85 +704,112 @@ function Memories({
     }
   }
 
-  const photoMemories = memories.filter((memory) => memory.image_signed_url);
-  const diaryGroups = groupMemoriesByDate(memories);
+  const normalizedSearch = memorySearch.trim().toLowerCase();
+  const filteredMemories = memories.filter((memory) => {
+    const matchesSearch = !normalizedSearch || [memory.content, memory.location, memory.place_name, memory.location_note]
+      .filter(Boolean)
+      .some((value) => value?.toLowerCase().includes(normalizedSearch));
+    if (!matchesSearch) return false;
+    if (memoryView === "locations") return Boolean(memory.location || memory.place_name || memory.latitude);
+    if (memoryView === "gallery") return Boolean(memory.image_signed_url);
+    if (memoryView === "musings") return !memory.image_signed_url;
+    return true;
+  });
+  const storyHero = filteredMemories.find((memory) => memory.image_signed_url) || filteredMemories[0] || null;
+  const storyMemories = storyHero ? filteredMemories.filter((memory) => memory.id !== storyHero.id) : filteredMemories;
 
   return (
-    <div className="view-stack">
-      <div className="section-title-row">
-        <SectionTitle title="Memories" eyebrow="Shared Diary" subtitle="A shared diary for notes, photos, and the little pieces of your days." icon={Heart} />
-        <button onClick={() => setComposerOpen(true)} type="button">
-          <Plus size={18} />
-          New diary entry
+    <div className="memory-story-page">
+      <header className="story-hero-header">
+        <div>
+          <h1>Our Story</h1>
+          <p>Every quiet moment and grand adventure, preserved in your digital sanctuary.</p>
+        </div>
+        <label className="story-search">
+          <Search size={17} />
+          <input value={memorySearch} onChange={(event) => setMemorySearch(event.target.value)} placeholder="Recall a memory..." />
+        </label>
+      </header>
+
+      <div className="story-tabs">
+        <button className={memoryView === "all" ? "active" : ""} onClick={() => setMemoryView("all")} type="button">All Pages</button>
+        <button className={memoryView === "locations" ? "active" : ""} onClick={() => setMemoryView("locations")} type="button">Locations</button>
+        <button className={memoryView === "gallery" ? "active" : ""} onClick={() => setMemoryView("gallery")} type="button">Gallery</button>
+        <button className={memoryView === "musings" ? "active" : ""} onClick={() => setMemoryView("musings")} type="button">Musings</button>
+        <button className="story-refresh" onClick={loadMemories} title="Refresh memories" type="button">
+          <RefreshCw size={15} />
         </button>
       </div>
 
-      <section className="memory-board">
-        <div className="section-header">
-          <div className="segmented-control">
-            <button className={memoryView === "diary" ? "active" : ""} onClick={() => setMemoryView("diary")} type="button">
-              Diary
-            </button>
-            <button className={memoryView === "photos" ? "active" : ""} onClick={() => setMemoryView("photos")} type="button">
-              Photos
-            </button>
-          </div>
-          <button className="text-button" onClick={loadMemories} type="button">
-            Refresh
-          </button>
-        </div>
-        {loadingList ? (
+      {loadingList ? (
+        <section className="memory-story-canvas">
           <SkeletonRows />
-        ) : memoryView === "diary" && memories.length ? (
-          <div className="diary-book">
-            {diaryGroups.map(([dateLabel, group]) => (
-              <section className="diary-day" key={dateLabel}>
-                <div className="diary-date">{dateLabel}</div>
-                <div className="diary-entries">
-                  {group.map((memory) => (
-                    <article className={memory.image_signed_url ? "diary-entry with-photo" : "diary-entry"} key={memory.id}>
-                      {memory.image_signed_url ? (
-                        <button className="diary-photo-button" onClick={() => setSelectedPhoto(memory)} type="button">
-                          <img alt="" src={memory.image_signed_url} />
-                        </button>
-                      ) : null}
-                      <div className="diary-entry-body">
-                        <p>{memory.content || "Photo memory"}</p>
-                        <div className="meta">
-                          {memory.location ? <span>{memory.location}</span> : null}
-                          {memory.timestamp ? <span>{formatDate(memory.timestamp)}</span> : null}
-                        </div>
-                        <div className="card-actions">
-                          <button className="icon-only ghost" onClick={() => setEditing(memory)} title="Edit diary entry" type="button">
-                            <Pencil size={16} />
-                          </button>
-                          <button className="icon-only danger" disabled={busy} onClick={() => deleteMemory(memory.id)} title="Delete diary entry" type="button">
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              </section>
-            ))}
-          </div>
-        ) : memoryView === "photos" && photoMemories.length ? (
-          <div className="photo-library">
-            {photoMemories.map((memory) => (
-              <button className="photo-tile" key={memory.id} onClick={() => setSelectedPhoto(memory)} type="button">
-                <img alt="" src={memory.image_signed_url || ""} />
-                <span>{memory.location || formatDate(memory.timestamp || memory.created_at || "")}</span>
+        </section>
+      ) : storyHero ? (
+        <section className="memory-story-canvas">
+          <article className="story-feature-card">
+            {storyHero.image_signed_url ? (
+              <button className="story-polaroid" onClick={() => setSelectedPhoto(storyHero)} type="button">
+                <img alt="" src={storyHero.image_signed_url} />
+                <span>{storyHero.location || storyHero.place_name || formatDate(storyHero.timestamp || storyHero.created_at || "")}</span>
               </button>
+            ) : null}
+            <div className="story-feature-copy">
+              <span className="story-ribbon">Memory of the Month</span>
+              <h2>{memoryTitle(storyHero)}</h2>
+              <p>{memoryExcerpt(storyHero)}</p>
+              <blockquote>{storyHero.content ? `"${memoryQuote(storyHero)}"` : "A page from your shared sanctuary."}</blockquote>
+              <button className="text-button" onClick={() => setSelectedPhoto(storyHero)} type="button">Read full journal</button>
+              <div className="card-actions">
+                <button className="icon-only ghost" onClick={() => setEditing(storyHero)} title="Edit memory" type="button">
+                  <Pencil size={16} />
+                </button>
+                <button className="icon-only danger" disabled={busy} onClick={() => deleteMemory(storyHero.id)} title="Delete memory" type="button">
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            </div>
+          </article>
+
+          <div className="story-timeline">
+            {storyMemories.map((memory, index) => (
+              <article className={`story-card story-card-${index % 5}`} key={memory.id}>
+                <div className="story-card-date">{formatMonthYear(memory.timestamp || memory.created_at || "")}</div>
+                {memory.image_signed_url ? (
+                  <button className="story-card-photo" onClick={() => setSelectedPhoto(memory)} type="button">
+                    <img alt="" src={memory.image_signed_url} />
+                  </button>
+                ) : null}
+                <div className="story-card-body">
+                  <h3>{memoryTitle(memory)}</h3>
+                  <p>{memoryExcerpt(memory)}</p>
+                  <div className="meta">
+                    {memory.location || memory.place_name ? <span>{memory.location || memory.place_name}</span> : null}
+                    {memory.timestamp ? <span>{formatDate(memory.timestamp)}</span> : null}
+                  </div>
+                  <div className="card-actions">
+                    <button className="icon-only ghost" onClick={() => setEditing(memory)} title="Edit memory" type="button">
+                      <Pencil size={16} />
+                    </button>
+                    <button className="icon-only danger" disabled={busy} onClick={() => deleteMemory(memory.id)} title="Delete memory" type="button">
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </div>
+              </article>
             ))}
           </div>
-        ) : (
-          <EmptyState
-            title={memoryView === "photos" ? "No photos yet" : "No diary entries yet"}
-            text={memoryView === "photos" ? "Add a photo to a diary entry and it will appear here." : "Write a note or attach a photo to start your shared diary."}
-          />
-        )}
-      </section>
+        </section>
+      ) : (
+        <section className="memory-story-canvas">
+          <EmptyState title="No pages yet" text="Write a note or attach a photo to begin your story." />
+        </section>
+      )}
+
+      <button className="story-add-button" onClick={() => setComposerOpen(true)} title="Add memory" type="button">
+        <Pencil size={20} />
+        <span>Add</span>
+      </button>
 
       {editing ? (
         <Modal title="Edit memory" onClose={() => setEditing(null)}>
@@ -2096,6 +2125,27 @@ function groupMemoriesByDate(memories: Memory[]): [string, Memory[]][] {
     return acc;
   }, {});
   return Object.entries(grouped);
+}
+
+function memoryTitle(memory: Memory): string {
+  const base = memory.place_name || memory.location || memory.content || "A page from us";
+  const sentence = base.split(/[.!?\n]/)[0]?.trim() || "A page from us";
+  return sentence.length > 42 ? `${sentence.slice(0, 39)}...` : sentence;
+}
+
+function memoryExcerpt(memory: Memory): string {
+  const value = memory.content || memory.location_note || memory.location || "A saved moment from your shared story.";
+  return value.length > 170 ? `${value.slice(0, 167)}...` : value;
+}
+
+function memoryQuote(memory: Memory): string {
+  const value = memory.content || "Let's keep this one close.";
+  return value.length > 96 ? `${value.slice(0, 93)}...` : value;
+}
+
+function formatMonthYear(value: string): string {
+  if (!value) return "A page";
+  return new Date(value).toLocaleDateString(undefined, { month: "long", year: "numeric" });
 }
 
 function formatPreference(value: Record<string, unknown>): string {
