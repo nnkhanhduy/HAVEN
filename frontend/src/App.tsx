@@ -29,7 +29,13 @@ import { apiFormRequest, apiRequest, apiBaseUrl, appVersion, supabase } from "./
 import type { AskResponse, ImportantDate, Memory, Preference, Profile, WishlistItem } from "./types";
 
 type Notice = { type: "ok" | "error"; text: string } | null;
-type Tab = "today" | "memories" | "ask" | "wiki" | "map" | "settings";
+type Tab = "today" | "memories" | "wiki" | "map" | "settings";
+type CoachChatMessage = {
+  id: string;
+  role: "user" | "assistant";
+  text: string;
+  sources?: Memory[];
+};
 type CreateCoupleResult = {
   couple_id: string;
   profile: Profile;
@@ -39,7 +45,6 @@ type CreateCoupleResult = {
 const tabs = [
   { id: "today" as const, label: "Today", icon: Sparkles },
   { id: "memories" as const, label: "Memories", icon: Heart },
-  { id: "ask" as const, label: "Coach", icon: MessageCircle },
   { id: "wiki" as const, label: "Profile", icon: Gift },
   { id: "map" as const, label: "Map", icon: MapPin },
   { id: "settings" as const, label: "Settings", icon: Settings },
@@ -398,6 +403,7 @@ function Workspace({
 }) {
   const [tab, setTab] = useState<Tab>("today");
   const [inviteCode, setInviteCode] = useState<string | null>(null);
+  const [coachOpen, setCoachOpen] = useState(false);
 
   async function createInvite() {
     try {
@@ -435,9 +441,8 @@ function Workspace({
 
       <section className="content-panel">
         <div key={tab} className="tab-view page-enter">
-          {tab === "today" ? <Today session={session} profile={profile} setTab={setTab} showError={showError} /> : null}
+          {tab === "today" ? <Today session={session} profile={profile} setTab={setTab} openCoach={() => setCoachOpen(true)} showError={showError} /> : null}
           {tab === "memories" ? <Memories session={session} showError={showError} showOk={showOk} /> : null}
-          {tab === "ask" ? <AskAi session={session} showError={showError} /> : null}
           {tab === "wiki" ? <Wiki session={session} showError={showError} showOk={showOk} /> : null}
           {tab === "map" ? <LoveMap session={session} showError={showError} showOk={showOk} /> : null}
           {tab === "settings" ? (
@@ -457,6 +462,7 @@ function Workspace({
           );
         })}
       </nav>
+      <CoachChat session={session} showError={showError} open={coachOpen} setOpen={setCoachOpen} />
     </section>
   );
 }
@@ -465,11 +471,13 @@ function Today({
   session,
   profile,
   setTab,
+  openCoach,
   showError,
 }: {
   session: Session;
   profile: Profile;
   setTab: (tab: Tab) => void;
+  openCoach: () => void;
   showError: (error: unknown) => void;
 }) {
   const [memories, setMemories] = useState<Memory[]>([]);
@@ -519,7 +527,7 @@ function Today({
           <ImagePlus size={20} />
           <span>Add a memory</span>
         </button>
-        <button className="quick-action-card" onClick={() => setTab("ask")} type="button">
+        <button className="quick-action-card" onClick={openCoach} type="button">
           <MessageCircle size={20} />
           <span>Ask your AI</span>
         </button>
@@ -843,22 +851,63 @@ function Memories({
   );
 }
 
-function AskAi({ session, showError }: { session: Session; showError: (error: unknown) => void }) {
-  const [question, setQuestion] = useState("");
-  const [answer, setAnswer] = useState<AskResponse | null>(null);
+function CoachChat({
+  session,
+  showError,
+  open,
+  setOpen,
+}: {
+  session: Session;
+  showError: (error: unknown) => void;
+  open: boolean;
+  setOpen: (open: boolean) => void;
+}) {
+  const [messages, setMessages] = useState<CoachChatMessage[]>([]);
+  const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const suggestions = [
     "What should we do together this weekend?",
     "What gift would feel personal based on what we saved?",
     "Give us advice based on our recent diary entries.",
   ];
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const logRef = useRef<HTMLDivElement | null>(null);
 
-  async function ask(nextQuestion = question) {
-    setQuestion(nextQuestion);
+  useEffect(() => {
+    if (open) {
+      window.setTimeout(() => inputRef.current?.focus(), 80);
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (open && logRef.current) {
+      logRef.current.scrollTop = logRef.current.scrollHeight;
+    }
+  }, [messages, busy, open]);
+
+  async function sendMessage(nextQuestion = draft) {
+    const trimmed = nextQuestion.trim();
+    if (!trimmed || busy) return;
+    const userMessage: CoachChatMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      text: trimmed,
+    };
+    setMessages((current) => [...current, userMessage]);
+    setDraft("");
     setBusy(true);
     try {
-      const query = encodeURIComponent(nextQuestion);
-      setAnswer(await apiRequest<AskResponse>(session, `/api/ask?question=${query}`));
+      const query = encodeURIComponent(trimmed);
+      const answer = await apiRequest<AskResponse>(session, `/api/ask?question=${query}`);
+      setMessages((current) => [
+        ...current,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          text: answer.answer,
+          sources: answer.sources,
+        },
+      ]);
     } catch (error) {
       showError(error);
     } finally {
@@ -867,38 +916,88 @@ function AskAi({ session, showError }: { session: Session; showError: (error: un
   }
 
   return (
-    <div className="view-stack">
-      <SectionTitle title="Relationship Coach" eyebrow="AI Coach" subtitle="Advice and suggestions based on your diary, profile, places, ideas, and important dates." icon={Sparkles} />
-      <section className="chat-panel">
-        <label>
-          What would you like help with?
-          <textarea value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Ask for advice, date ideas, gift suggestions, or a gentle read on your recent moments." />
-        </label>
-        <div className="suggestion-row">
-          {suggestions.map((item) => (
-            <button className="chip-button" key={item} onClick={() => ask(item)} type="button">
-              {item}
+    <>
+      <button
+        className={`coach-fab${open ? " active" : ""}`}
+        onClick={() => setOpen(!open)}
+        title={open ? "Close Thối" : "Open Thối"}
+        type="button"
+      >
+        {open ? <X size={22} /> : <MessageCircle size={22} />}
+      </button>
+      {open ? (
+        <section className="coach-chat-panel" aria-label="Thối chat">
+          <header className="coach-chat-header">
+            <div>
+              <span>Thối</span>
+              <p>Your little Haven helper for advice and ideas.</p>
+            </div>
+            <button className="icon-only ghost" onClick={() => setOpen(false)} title="Close Thối" type="button">
+              <X size={17} />
             </button>
-          ))}
-        </div>
-        <button disabled={busy || question.length < 2} onClick={() => ask()} type="button">
-          <Send size={17} />
-          {busy ? "Thinking..." : "Get advice"}
-        </button>
-      </section>
-      {busy ? <SkeletonRows /> : null}
-      {answer ? (
-        <section className="answer-panel">
-          <p>{answer.answer}</p>
-          <h3>Used from your diary</h3>
-          <div className="source-list">
-            {answer.sources.map((source) => (
-              <MemoryMini key={source.id} memory={source} />
-            ))}
+          </header>
+          <div className="coach-chat-log" ref={logRef}>
+            {messages.length ? (
+              messages.map((message) => (
+                <article className={`coach-message ${message.role}`} key={message.id}>
+                  <p>{message.text}</p>
+                  {message.role === "assistant" && message.sources?.length ? (
+                    <details>
+                      <summary>Used from your Haven</summary>
+                      <div className="source-list">
+                        {message.sources.slice(0, 3).map((source) => (
+                          <MemoryMini key={source.id} memory={source} />
+                        ))}
+                      </div>
+                    </details>
+                  ) : null}
+                </article>
+              ))
+            ) : (
+              <div className="coach-empty">
+                <Sparkles size={20} />
+                <strong>Ask for advice, ideas, or a gentle read on recent moments.</strong>
+                <div className="suggestion-row">
+                  {suggestions.map((item) => (
+                    <button className="chip-button" key={item} onClick={() => sendMessage(item)} type="button">
+                      {item}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {busy ? (
+              <article className="coach-message assistant pending">
+                <p>Thinking...</p>
+              </article>
+            ) : null}
           </div>
+          <form
+            className="coach-chat-input"
+            onSubmit={(event) => {
+              event.preventDefault();
+              sendMessage();
+            }}
+          >
+            <textarea
+              ref={inputRef}
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  sendMessage();
+                }
+              }}
+              placeholder="Ask Thối..."
+            />
+            <button className="icon-only" disabled={busy || draft.trim().length < 2} title="Send" type="submit">
+              <Send size={17} />
+            </button>
+          </form>
         </section>
       ) : null}
-    </div>
+    </>
   );
 }
 
