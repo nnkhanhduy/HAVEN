@@ -1412,9 +1412,10 @@ function LoveMap({
   useEffect(() => {
     if (!mapRef.current || mapInstanceRef.current) return;
     const map = L.map(mapRef.current, { scrollWheelZoom: true }).setView([13.7563, 100.5018], 11);
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-      maxZoom: 19,
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+      maxZoom: 20,
     }).addTo(map);
     const markerLayer = L.layerGroup().addTo(map);
     mapInstanceRef.current = map;
